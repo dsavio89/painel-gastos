@@ -6,7 +6,7 @@
 <title>Painel de Gastos</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:#1f1f1f; max-width:900px; margin:0 auto; padding:24px; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:#1f1f1f; max-width:1200px; margin:0 auto; padding:24px 12px; }
   h1 { font-size:20px; font-weight:600; display:flex; align-items:center; gap:8px; margin-bottom:2px; }
   h3 { font-size:14px; font-weight:500; margin:0 0 8px; }
   .subtitle { font-size:13px; color:#777; margin-bottom:20px; }
@@ -44,8 +44,8 @@
   .config-warning { background:#fff8e1; color:#8a6d00; border:1px solid #f0dfa0; padding:12px; border-radius:8px; font-size:13px; margin-bottom:20px; }
   .config-warning code { background:#fff; padding:1px 5px; border-radius:4px; }
   .subsection { margin-bottom:24px; }
-  table.matriz { font-size:12px; }
-  table.matriz th, table.matriz td { padding:4px 6px; white-space:nowrap; }
+  table.matriz { font-size:11px; }
+  table.matriz th, table.matriz td { padding:3px 5px; white-space:nowrap; }
   table.matriz tr.categoria-header td, table.matriz tr.categoria-header th { background:#f0f0ee; font-weight:600; }
   table.matriz tr.categoria-total td { font-weight:600; border-top:1px solid #ddd; }
   table.matriz td.subcategoria { padding-left:16px; color:#555; }
@@ -101,12 +101,12 @@
   </form>
 
   <div class="subsection">
-    <h3>Gastos por categoria — mês atual</h3>
+    <h3>Gastos por categoria - Mês atual</h3>
     <div class="card chart-box" id="graficoCategoriaWrap" style="margin-bottom:12px;"></div>
   </div>
 
   <div class="subsection">
-    <h3>Orçamento do ano — categoria × mês (competência)</h3>
+    <h3>Orçamento do Ano - Categoria x Mês (Competência)</h3>
     <div id="matrizWrap" style="overflow-x:auto;"></div>
   </div>
 
@@ -232,6 +232,7 @@ function somaMeses(mesStr, n){
   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
 }
 function fmt(v){ return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v || 0); }
+function fmtCompacto(v){ return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v || 0); }
 function showSaveError(on){ document.getElementById("saveError").style.display = on ? "block" : "none"; }
 function setStatus(txt){ document.getElementById("status").textContent = txt; }
 
@@ -450,22 +451,22 @@ function renderMatrizCategoriaMes(){
       if(totalSub === 0) return; // esconde subcategoria sem lançamento, deixa a matriz limpa
       valores.forEach((v,i) => totalCatMes[i] += v);
       linhasSub += '<tr><td class="subcategoria">' + sub + '</td>' +
-        valores.map(v => '<td class="right">' + (v>0?fmt(v):'<span class="muted">—</span>') + '</td>').join("") +
-        '<td class="right">' + fmt(totalSub) + '</td></tr>';
+        valores.map(v => '<td class="right">' + (v>0?fmtCompacto(v):'<span class="muted">—</span>') + '</td>').join("") +
+        '<td class="right">' + fmtCompacto(totalSub) + '</td></tr>';
     });
     const totalCatAno = totalCatMes.reduce((a,v)=>a+v,0);
     totalCatMes.forEach((v,i) => totalGeralMes[i] += v);
     html += '<tr class="categoria-header"><td>' + cat + '</td>' + MESES_NOMES.map(()=>'<td></td>').join("") + '<td></td></tr>';
     html += linhasSub;
     html += '<tr class="categoria-total"><td>Total ' + cat + '</td>' +
-      totalCatMes.map(v => '<td class="right">' + (v>0?fmt(v):'<span class="muted">—</span>') + '</td>').join("") +
-      '<td class="right">' + fmt(totalCatAno) + '</td></tr>';
+      totalCatMes.map(v => '<td class="right">' + (v>0?fmtCompacto(v):'<span class="muted">—</span>') + '</td>').join("") +
+      '<td class="right">' + fmtCompacto(totalCatAno) + '</td></tr>';
   });
 
   const totalGeralAno = totalGeralMes.reduce((a,v)=>a+v,0);
   html += '<tr class="total-geral"><td>Despesas totais</td>' +
-    totalGeralMes.map(v => '<td class="right">' + fmt(v) + '</td>').join("") +
-    '<td class="right">' + fmt(totalGeralAno) + '</td></tr>';
+    totalGeralMes.map(v => '<td class="right">' + fmtCompacto(v) + '</td>').join("") +
+    '<td class="right">' + fmtCompacto(totalGeralAno) + '</td></tr>';
 
   html += '</tbody></table>';
   wrap.innerHTML = html;
