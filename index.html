@@ -44,6 +44,16 @@
   .config-warning { background:#fff8e1; color:#8a6d00; border:1px solid #f0dfa0; padding:12px; border-radius:8px; font-size:13px; margin-bottom:20px; }
   .config-warning code { background:#fff; padding:1px 5px; border-radius:4px; }
   .subsection { margin-bottom:24px; }
+  table.matriz { font-size:12px; }
+  table.matriz th, table.matriz td { padding:4px 6px; white-space:nowrap; }
+  table.matriz tr.categoria-header td, table.matriz tr.categoria-header th { background:#f0f0ee; font-weight:600; }
+  table.matriz tr.categoria-total td { font-weight:600; border-top:1px solid #ddd; }
+  table.matriz td.subcategoria { padding-left:16px; color:#555; }
+  table.matriz tr.total-geral td { font-weight:700; background:#eef4f1; border-top:2px solid #185FA5; }
+  .chart-box { display:flex; align-items:center; gap:14px; min-height:130px; }
+  .chart-legend { font-size:11px; color:#555; display:flex; flex-direction:column; gap:4px; }
+  .chart-legend .item { display:flex; align-items:center; gap:5px; }
+  .chart-legend .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -69,18 +79,18 @@
   <form id="formGasto">
     <input type="hidden" id="g_id">
     <div><label>Categoria</label>
-      <select id="g_categoria">
-        <option>Supermercado</option><option>Academia</option><option>Restaurante</option>
-        <option>Combustível</option><option>Farmácia</option><option>Internet</option>
-        <option>Assinaturas</option><option>Transporte</option><option>Lazer</option>
-        <option>Saúde</option><option>Educação</option><option>Vestuário</option><option>Outros</option>
-      </select>
+      <select id="g_categoria"></select>
     </div>
+    <div><label>Subcategoria</label>
+      <select id="g_subcategoria"></select>
+    </div>
+    <div id="g_subOutraWrap" style="display:none;"><label>Qual?</label><input id="g_subcategoriaOutra" placeholder="Digite a subcategoria"></div>
     <div><label>Data</label><input type="date" id="g_data"></div>
     <div><label>Valor</label><input type="number" step="0.01" id="g_valor" placeholder="100.00"></div>
     <div><label>Forma de pagamento</label>
       <select id="g_forma">
-        <option>Débito</option><option>PIX</option><option>Boleto</option><option>Crédito</option>
+        <option>Débito</option><option>PIX</option><option>Boleto</option>
+        <option>Cartão Nubank</option><option>Cartão Amex</option><option>Cartão Sicredi</option>
       </select>
     </div>
     <div id="g_parcelasWrap" style="display:none;"><label>Parcelas</label><input type="number" id="g_parcelas" value="1" min="1"></div>
@@ -91,8 +101,13 @@
   </form>
 
   <div class="subsection">
-    <h3>Por competência (mês da compra, todas as formas de pagamento)</h3>
-    <div id="porCompetenciaWrap"></div>
+    <h3>Gastos por categoria — mês atual</h3>
+    <div class="card chart-box" id="graficoCategoriaWrap" style="margin-bottom:12px;"></div>
+  </div>
+
+  <div class="subsection">
+    <h3>Orçamento do ano — categoria × mês (competência)</h3>
+    <div id="matrizWrap" style="overflow-x:auto;"></div>
   </div>
 
   <button class="toggle-hist" id="toggleHistGastos">▾ Histórico de gastos</button>
@@ -105,13 +120,18 @@
     Saída = débito/PIX/boleto no mês da compra + parcelas de cartão vencendo naquele mês.
   </p>
   <div id="fluxoWrap"></div>
+
+  <div class="subsection">
+    <h3>Fatura por cartão (mês atual e próximos)</h3>
+    <div id="faturaCartaoWrap"></div>
+  </div>
 </div>
 
 <div id="rendaSection" style="display:none;">
   <form id="formRenda">
     <input type="hidden" id="r_id">
     <div><label>Categoria</label>
-      <select id="r_categoria"><option>Salário</option><option>Rendimentos</option><option>Outros</option></select>
+      <select id="r_categoria"><option>Salário</option><option>Rendimentos</option><option>Férias</option><option>Aluguel imóvel</option><option>Vale alimentação</option><option>Outros</option></select>
     </div>
     <div><label>Data</label><input type="date" id="r_data"></div>
     <div><label>Valor</label><input type="number" step="0.01" id="r_valor" placeholder="5000.00"></div>
@@ -127,14 +147,82 @@
 /* ============================================================
    COLE AQUI A URL DO SEU APPS SCRIPT (dessa planilha de gastos)
    ============================================================ */
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw74OCPBA17YAh_1zq1OE2aD4_64vYKftxnVSWHW9SAsdNJWwXggN6UppuxAXFsXpW3DA/exec";
+const APPS_SCRIPT_URL = "COLE_SUA_URL_AQUI";
 /* ============================================================ */
+
+const CATEGORIAS_DESPESA = {
+  "Casa": ["IPTU","Água","Luz","Reparos"],
+  "Cotidiano": ["Supermercado","iFood","Diarista"],
+  "Transporte": ["Combustível","Seguro","Reparos","Estacionamento","IPVA"],
+  "Saúde": ["Academia","Plano de saúde","Farmácia","Suplementos"],
+  "Férias": ["Passagens","Acomodações","Alimentação","Souvenirs"],
+  "Lazer": ["Barzinhos","Restaurantes","Equipamentos de esporte"],
+  "Assinaturas": ["Spotify","Internet/Celular","TV"],
+  "Pessoal": ["Vestuário","Amazon","Mercado Livre","Barbeiro"],
+  "Obrigações Financeiras": ["Empréstimos/Dívidas"],
+  "Diversos": ["Outros"]
+};
+const MESES_NOMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+function popularCategorias(){
+  const sel = document.getElementById("g_categoria");
+  sel.innerHTML = Object.keys(CATEGORIAS_DESPESA).map(c => `<option>${c}</option>`).join("");
+  popularSubcategorias();
+}
+function popularSubcategorias(){
+  const categoria = document.getElementById("g_categoria").value;
+  const sub = document.getElementById("g_subcategoria");
+  const lista = CATEGORIAS_DESPESA[categoria] || [];
+  sub.innerHTML = lista.map(s => `<option>${s}</option>`).join("") + '<option value="__outra__">Outra...</option>';
+  atualizarVisibilidadeSubOutra();
+}
+function atualizarVisibilidadeSubOutra(){
+  const ehOutra = document.getElementById("g_subcategoria").value === "__outra__";
+  document.getElementById("g_subOutraWrap").style.display = ehOutra ? "block" : "none";
+}
 
 let gastos = [];
 let renda = [];
 let tab = "GASTOS";
 let histGastosAberto = false;
 let editando = { tipo: null, id: null }; // 'gasto' | 'renda'
+
+const PALETA = ["#185FA5","#0F6E56","#c98a2c","#e07a5f","#7F77DD","#639922","#a13d63","#3a6ea5","#88a65e","#c85c5c","#8a6d00","#555"];
+function corParaCategoria(nome, indice){ return PALETA[indice % PALETA.length]; }
+
+function desenharGraficoPizza(elId, dados){
+  const wrap = document.getElementById(elId);
+  if(dados.length === 0){
+    wrap.innerHTML = '<div class="empty" style="padding:0;">Sem dados ainda</div>';
+    return;
+  }
+  const total = dados.reduce((a,d) => a + d.valor, 0);
+  const raio = 45, raioInterno = 26, cx = 55, cy = 55;
+  let anguloAtual = -90;
+  let fatias = "";
+  dados.forEach(d => {
+    const fracao = d.valor / total;
+    const anguloFatia = fracao * 360;
+    const x1 = cx + raio * Math.cos(anguloAtual * Math.PI/180);
+    const y1 = cy + raio * Math.sin(anguloAtual * Math.PI/180);
+    const anguloFim = anguloAtual + anguloFatia;
+    const x2 = cx + raio * Math.cos(anguloFim * Math.PI/180);
+    const y2 = cy + raio * Math.sin(anguloFim * Math.PI/180);
+    const grandeArco = anguloFatia > 180 ? 1 : 0;
+    const xi1 = cx + raioInterno * Math.cos(anguloAtual * Math.PI/180);
+    const yi1 = cy + raioInterno * Math.sin(anguloAtual * Math.PI/180);
+    const xi2 = cx + raioInterno * Math.cos(anguloFim * Math.PI/180);
+    const yi2 = cy + raioInterno * Math.sin(anguloFim * Math.PI/180);
+    const pct = (fracao * 100).toFixed(0);
+    fatias += `<path d="M ${x1} ${y1} A ${raio} ${raio} 0 ${grandeArco} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${raioInterno} ${raioInterno} 0 ${grandeArco} 0 ${xi1} ${yi1} Z" fill="${d.cor}"><title>${d.nome}: ${fmt(d.valor)} (${pct}%)</title></path>`;
+    anguloAtual = anguloFim;
+  });
+  const legenda = dados.map(d => {
+    const pct = ((d.valor/total)*100).toFixed(0);
+    return `<div class="item"><span class="dot" style="background:${d.cor}"></span>${d.nome} (${pct}%)</div>`;
+  }).join("");
+  wrap.innerHTML = `<svg viewBox="0 0 110 110" width="110" height="110">${fatias}</svg><div class="chart-legend">${legenda}</div>`;
+}
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function mesDe(dataStr){ return dataStr ? dataStr.slice(0,7) : ""; } // YYYY-MM
@@ -156,7 +244,7 @@ async function loadFromSheet(){
   try{
     const res = await fetch(APPS_SCRIPT_URL);
     const data = await res.json();
-    gastos = (data.gastos || []).map(g => ({ ...g, id: String(g.id), valor: Number(g.valor), parcelas: Number(g.parcelas) || 1 }));
+    gastos = (data.gastos || []).map(g => ({ ...g, id: String(g.id), subcategoria: g.subcategoria || "", valor: Number(g.valor), parcelas: Number(g.parcelas) || 1 }));
     renda = (data.renda || []).map(r => ({ ...r, id: String(r.id), valor: Number(r.valor) }));
     showSaveError(false);
     setStatus("Sincronizado com a planilha.");
@@ -193,9 +281,11 @@ async function saveToSheet(){
 /* ===================== CÁLCULOS ===================== */
 
 // Retorna lista de {mes, valor} representando em quais meses cada gasto pesa no CAIXA
+function ehCartao(formaPagamento){ return (formaPagamento || "").startsWith("Cartão"); }
+
 function parcelasDoGasto(g){
   const mesCompra = mesDe(g.data);
-  if(g.formaPagamento !== "Crédito"){
+  if(!ehCartao(g.formaPagamento)){
     return [{ mes: mesCompra, valor: g.valor }];
   }
   const n = g.parcelas || 1;
@@ -249,8 +339,8 @@ function render(){
   else if(tab === "FLUXO") renderResumoFluxo();
   else renderResumoRenda();
 
-  if(tab === "GASTOS"){ renderPorCompetencia(); renderHistoricoGastos(); }
-  else if(tab === "FLUXO"){ renderFluxo(); }
+  if(tab === "GASTOS"){ renderGraficoCategoriaMes(); renderMatrizCategoriaMes(); renderHistoricoGastos(); }
+  else if(tab === "FLUXO"){ renderFluxo(); renderFatura(); }
   else { renderRenda(); }
 }
 
@@ -311,21 +401,72 @@ function renderResumoRenda(){
     </div>`;
 }
 
-function renderPorCompetencia(){
-  const wrap = document.getElementById("porCompetenciaWrap");
+function renderGraficoCategoriaMes(){
   const mesAtual = hoje().slice(0,7);
   const gastosMes = gastos.filter(g => mesDe(g.data) === mesAtual);
-  if(gastosMes.length === 0){
-    wrap.innerHTML = '<div class="empty">Nenhum gasto lançado neste mês ainda.</div>';
-    return;
-  }
   const porCategoria = {};
   gastosMes.forEach(g => { porCategoria[g.categoria] = (porCategoria[g.categoria]||0) + g.valor; });
   const lista = Object.entries(porCategoria).sort((a,b) => b[1]-a[1]);
-  let html = '<table><thead><tr><th>Categoria</th><th class="right">Total no mês</th></tr></thead><tbody>';
-  lista.forEach(([cat, val]) => {
-    html += '<tr><td>' + cat + '</td><td class="right">' + fmt(val) + '</td></tr>';
+  const dadosGrafico = lista.map(([cat, val], i) => ({ nome: cat, valor: val, cor: corParaCategoria(cat, i) }));
+  desenharGraficoPizza("graficoCategoriaWrap", dadosGrafico);
+}
+
+function renderMatrizCategoriaMes(){
+  const wrap = document.getElementById("matrizWrap");
+  const ano = String(new Date().getFullYear());
+
+  // soma[categoria][subcategoria][mesIndex 0-11] = valor
+  const soma = {};
+  Object.keys(CATEGORIAS_DESPESA).forEach(cat => {
+    soma[cat] = {};
+    CATEGORIAS_DESPESA[cat].forEach(sub => { soma[cat][sub] = Array(12).fill(0); });
   });
+  const subcategoriasExtras = {}; // categoria -> Set de subcategorias "Outra" digitadas
+
+  gastos.forEach(g => {
+    if(mesDe(g.data).slice(0,4) !== ano) return;
+    const mesIdx = parseInt(g.data.slice(5,7), 10) - 1;
+    if(!soma[g.categoria]) return;
+    if(!soma[g.categoria][g.subcategoria]){
+      soma[g.categoria][g.subcategoria] = Array(12).fill(0);
+      subcategoriasExtras[g.categoria] = subcategoriasExtras[g.categoria] || [];
+      subcategoriasExtras[g.categoria].push(g.subcategoria);
+    }
+    soma[g.categoria][g.subcategoria][mesIdx] += g.valor;
+  });
+
+  let html = '<table class="matriz"><thead><tr><th>Categoria</th>' +
+    MESES_NOMES.map(m => '<th class="right">'+m+'</th>').join("") + '<th class="right">Ano</th></tr></thead><tbody>';
+
+  const totalGeralMes = Array(12).fill(0);
+
+  Object.keys(CATEGORIAS_DESPESA).forEach(cat => {
+    const totalCatMes = Array(12).fill(0);
+    let linhasSub = "";
+    const todasSubs = [...CATEGORIAS_DESPESA[cat], ...(subcategoriasExtras[cat]||[])];
+    todasSubs.forEach(sub => {
+      const valores = soma[cat][sub] || Array(12).fill(0);
+      const totalSub = valores.reduce((a,v)=>a+v,0);
+      if(totalSub === 0) return; // esconde subcategoria sem lançamento, deixa a matriz limpa
+      valores.forEach((v,i) => totalCatMes[i] += v);
+      linhasSub += '<tr><td class="subcategoria">' + sub + '</td>' +
+        valores.map(v => '<td class="right">' + (v>0?fmt(v):'<span class="muted">—</span>') + '</td>').join("") +
+        '<td class="right">' + fmt(totalSub) + '</td></tr>';
+    });
+    const totalCatAno = totalCatMes.reduce((a,v)=>a+v,0);
+    totalCatMes.forEach((v,i) => totalGeralMes[i] += v);
+    html += '<tr class="categoria-header"><td>' + cat + '</td>' + MESES_NOMES.map(()=>'<td></td>').join("") + '<td></td></tr>';
+    html += linhasSub;
+    html += '<tr class="categoria-total"><td>Total ' + cat + '</td>' +
+      totalCatMes.map(v => '<td class="right">' + (v>0?fmt(v):'<span class="muted">—</span>') + '</td>').join("") +
+      '<td class="right">' + fmt(totalCatAno) + '</td></tr>';
+  });
+
+  const totalGeralAno = totalGeralMes.reduce((a,v)=>a+v,0);
+  html += '<tr class="total-geral"><td>Despesas totais</td>' +
+    totalGeralMes.map(v => '<td class="right">' + fmt(v) + '</td>').join("") +
+    '<td class="right">' + fmt(totalGeralAno) + '</td></tr>';
+
   html += '</tbody></table>';
   wrap.innerHTML = html;
 }
@@ -337,10 +478,10 @@ function renderHistoricoGastos(){
   if(!histGastosAberto || gastos.length === 0){ wrap.innerHTML = ""; wrap.style.display = "none"; return; }
   wrap.style.display = "block";
   const ordenado = [...gastos].sort((a,b) => a.data < b.data ? 1 : -1);
-  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th>Forma</th><th class="right">Parcelas</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th>Subcategoria</th><th class="right">Valor</th><th>Forma</th><th class="right">Parcelas</th><th></th></tr></thead><tbody>';
   ordenado.forEach(g => {
-    html += '<tr><td>' + g.data + '</td><td>' + g.categoria + '</td><td class="right">' + fmt(g.valor) +
-      '</td><td>' + g.formaPagamento + '</td><td class="right">' + (g.formaPagamento==="Crédito" ? g.parcelas+"x" : "—") +
+    html += '<tr><td>' + g.data + '</td><td>' + g.categoria + '</td><td class="muted">' + (g.subcategoria || '—') + '</td><td class="right">' + fmt(g.valor) +
+      '</td><td>' + g.formaPagamento + '</td><td class="right">' + (ehCartao(g.formaPagamento) ? g.parcelas+"x" : "—") +
       '</td><td class="right"><button class="edit" data-id="' + g.id + '">✏️</button><button class="del" data-id="' + g.id + '">✕</button></td></tr>';
   });
   html += '</tbody></table>';
@@ -363,6 +504,49 @@ function renderFluxo(){
   [...fluxo].reverse().forEach(f => {
     html += '<tr><td>' + f.mes + '</td><td class="right pos">' + fmt(f.entradas) + '</td><td class="right neg">' + fmt(f.saidas) +
       '</td><td class="right ' + (f.saldo>=0?'pos':'neg') + '">' + fmt(f.saldo) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function calcularFaturaPorCartao(){
+  const cartoes = ["Cartão Nubank", "Cartão Amex", "Cartão Sicredi"];
+  const mapa = {}; // cartao -> { mes -> valor }
+  cartoes.forEach(c => mapa[c] = {});
+  gastos.forEach(g => {
+    if(!ehCartao(g.formaPagamento)) return;
+    if(!mapa[g.formaPagamento]) mapa[g.formaPagamento] = {};
+    parcelasDoGasto(g).forEach(p => {
+      mapa[g.formaPagamento][p.mes] = (mapa[g.formaPagamento][p.mes] || 0) + p.valor;
+    });
+  });
+  return mapa;
+}
+
+function renderFatura(){
+  const wrap = document.getElementById("faturaCartaoWrap");
+  const mapa = calcularFaturaPorCartao();
+  const mesAtual = hoje().slice(0,7);
+  const todosMeses = new Set();
+  Object.values(mapa).forEach(porMes => Object.keys(porMes).forEach(m => { if(m >= mesAtual) todosMeses.add(m); }));
+  const meses = [...todosMeses].sort();
+  const cartoes = Object.keys(mapa);
+
+  if(meses.length === 0){
+    wrap.innerHTML = '<div class="empty">Nenhuma compra em cartão lançada ainda.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Mês</th>' + cartoes.map(c => '<th class="right">' + c.replace("Cartão ","") + '</th>').join("") + '<th class="right">Total</th></tr></thead><tbody>';
+  meses.forEach(m => {
+    let totalMes = 0;
+    let linha = '<tr><td>' + m + '</td>';
+    cartoes.forEach(c => {
+      const v = (mapa[c][m] || 0);
+      totalMes += v;
+      linha += '<td class="right">' + (v > 0 ? fmt(v) : '<span class="muted">—</span>') + '</td>';
+    });
+    linha += '<td class="right"><b>' + fmt(totalMes) + '</b></td></tr>';
+    html += linha;
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
@@ -397,6 +581,15 @@ function iniciarEdicaoGasto(id){
   editando = { tipo: "gasto", id };
   document.getElementById("g_id").value = id;
   document.getElementById("g_categoria").value = g.categoria;
+  popularSubcategorias();
+  const opcoes = CATEGORIAS_DESPESA[g.categoria] || [];
+  if(opcoes.includes(g.subcategoria)){
+    document.getElementById("g_subcategoria").value = g.subcategoria;
+  } else {
+    document.getElementById("g_subcategoria").value = "__outra__";
+    document.getElementById("g_subcategoriaOutra").value = g.subcategoria;
+  }
+  atualizarVisibilidadeSubOutra();
   document.getElementById("g_data").value = g.data;
   document.getElementById("g_valor").value = g.valor;
   document.getElementById("g_forma").value = g.formaPagamento;
@@ -410,6 +603,8 @@ function cancelarEdicaoGasto(){
   editando = { tipo: null, id: null };
   document.getElementById("g_id").value = "";
   document.getElementById("g_valor").value = "";
+  document.getElementById("g_subcategoriaOutra").value = "";
+  popularCategorias();
   document.getElementById("g_data").value = hoje();
   document.getElementById("g_parcelas").value = 1;
   atualizarVisibilidadeParcelas();
@@ -442,7 +637,7 @@ function cancelarEdicaoRenda(){
 
 function atualizarVisibilidadeParcelas(){
   const forma = document.getElementById("g_forma").value;
-  document.getElementById("g_parcelasWrap").style.display = forma === "Crédito" ? "block" : "none";
+  document.getElementById("g_parcelasWrap").style.display = ehCartao(forma) ? "block" : "none";
 }
 
 /* ===================== EVENTOS ===================== */
@@ -452,20 +647,28 @@ document.getElementById("toggleHistGastos").addEventListener("click", () => { hi
 document.getElementById("g_forma").addEventListener("change", atualizarVisibilidadeParcelas);
 
 document.getElementById("g_data").value = hoje();
+popularCategorias();
+document.getElementById("g_categoria").addEventListener("change", popularSubcategorias);
+document.getElementById("g_subcategoria").addEventListener("change", atualizarVisibilidadeSubOutra);
 document.getElementById("formGasto").addEventListener("submit", async (e) => {
   e.preventDefault();
   const valor = parseFloat(document.getElementById("g_valor").value);
   if(!valor) return;
   const categoria = document.getElementById("g_categoria").value;
+  let subcategoria = document.getElementById("g_subcategoria").value;
+  if(subcategoria === "__outra__"){
+    subcategoria = document.getElementById("g_subcategoriaOutra").value.trim();
+    if(!subcategoria) return;
+  }
   const data = document.getElementById("g_data").value;
   const formaPagamento = document.getElementById("g_forma").value;
-  const parcelas = formaPagamento === "Crédito" ? (parseInt(document.getElementById("g_parcelas").value) || 1) : 1;
+  const parcelas = ehCartao(formaPagamento) ? (parseInt(document.getElementById("g_parcelas").value) || 1) : 1;
 
   if(editando.tipo === "gasto" && editando.id){
     const idx = gastos.findIndex(g => g.id === editando.id);
-    if(idx > -1) gastos[idx] = { id: editando.id, categoria, data, valor, formaPagamento, parcelas };
+    if(idx > -1) gastos[idx] = { id: editando.id, categoria, subcategoria, data, valor, formaPagamento, parcelas };
   } else {
-    gastos.push({ id: Date.now().toString(), categoria, data, valor, formaPagamento, parcelas });
+    gastos.push({ id: Date.now().toString(), categoria, subcategoria, data, valor, formaPagamento, parcelas });
   }
   cancelarEdicaoGasto();
   render();
