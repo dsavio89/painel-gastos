@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel de Gastos</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:#1f1f1f; max-width:900px; margin:0 auto; padding:24px; }
+  h1 { font-size:20px; font-weight:600; display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  h3 { font-size:14px; font-weight:500; margin:0 0 8px; }
+  .subtitle { font-size:13px; color:#777; margin-bottom:20px; }
+  .tabs { display:flex; gap:8px; border-bottom:1px solid #e5e5e5; margin-bottom:20px; flex-wrap:wrap; }
+  .tab { padding:8px 16px; font-size:14px; font-weight:500; color:#777; background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; margin-bottom:-1px; }
+  .tab.active { color:#185FA5; border-bottom-color:#185FA5; }
+  .summary { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+  .card { background:#f7f7f5; border-radius:10px; padding:14px; }
+  .card .label { font-size:12px; color:#777; }
+  .card .value { font-size:20px; font-weight:600; margin-top:4px; }
+  .card .value.pos { color:#0F6E56; }
+  .card .value.neg { color:#c0392b; }
+  .card .hint { font-size:12px; color:#aaa; margin-top:4px; }
+  form { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; align-items:end; background:#f7f7f5; padding:12px; border-radius:10px; margin-bottom:20px; }
+  label { font-size:12px; color:#777; display:block; margin-bottom:4px; }
+  input, select { width:100%; font-size:14px; padding:6px 8px; border:1px solid #ccc; border-radius:6px; }
+  button.add { background:#185FA5; color:#fff; border:none; border-radius:6px; padding:7px 10px; font-size:14px; cursor:pointer; }
+  button.add:hover { background:#134a82; }
+  button.add.editing { background:#0F6E56; }
+  button.cancel-edit { background:none; border:1px solid #ccc; border-radius:6px; padding:7px 10px; font-size:13px; color:#666; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; }
+  th { text-align:left; font-weight:400; font-size:12px; color:#999; border-bottom:1px solid #e5e5e5; padding:6px 4px; }
+  td { padding:6px 4px; border-bottom:1px solid #f0f0f0; }
+  .right { text-align:right; }
+  .pos { color:#0F6E56; }
+  .neg { color:#c0392b; }
+  .muted { color:#aaa; }
+  .empty { text-align:center; color:#aaa; font-size:14px; padding:32px 0; }
+  .del, .edit { background:none; border:none; color:#ccc; cursor:pointer; font-size:14px; padding:0 3px; }
+  .del:hover { color:#c0392b; }
+  .edit:hover { color:#185FA5; }
+  .toggle-hist { background:none; border:none; color:#888; font-size:12px; cursor:pointer; margin-bottom:8px; }
+  .save-error { background:#fdecec; color:#c0392b; border:1px solid #f4c2c2; padding:8px; border-radius:6px; font-size:13px; margin-bottom:16px; }
+  .status { font-size:12px; color:#aaa; margin-bottom:16px; }
+  .config-warning { background:#fff8e1; color:#8a6d00; border:1px solid #f0dfa0; padding:12px; border-radius:8px; font-size:13px; margin-bottom:20px; }
+  .config-warning code { background:#fff; padding:1px 5px; border-radius:4px; }
+  .subsection { margin-bottom:24px; }
+</style>
+</head>
+<body>
+
+<h1>💸 Painel de gastos</h1>
+<p class="subtitle" id="subtitle">Lance cada gasto do dia. Categoria já vem pré-cadastrada.</p>
+
+<div id="configWarning" class="config-warning" style="display:none;">
+  Antes de usar, cole a URL do seu Apps Script (dessa planilha de gastos) na constante <code>APPS_SCRIPT_URL</code> no início do código deste arquivo.
+</div>
+<div id="status" class="status"></div>
+<div id="saveError" class="save-error" style="display:none;">Não consegui salvar/carregar da planilha agora. Confira sua conexão ou a URL configurada.</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="GASTOS">Gastos</button>
+  <button class="tab" data-tab="FLUXO">Fluxo de caixa</button>
+  <button class="tab" data-tab="RENDA">Renda</button>
+</div>
+
+<div id="summaryWrap"></div>
+
+<div id="gastosSection">
+  <form id="formGasto">
+    <input type="hidden" id="g_id">
+    <div><label>Categoria</label>
+      <select id="g_categoria">
+        <option>Supermercado</option><option>Academia</option><option>Restaurante</option>
+        <option>Combustível</option><option>Farmácia</option><option>Internet</option>
+        <option>Assinaturas</option><option>Transporte</option><option>Lazer</option>
+        <option>Saúde</option><option>Educação</option><option>Vestuário</option><option>Outros</option>
+      </select>
+    </div>
+    <div><label>Data</label><input type="date" id="g_data"></div>
+    <div><label>Valor</label><input type="number" step="0.01" id="g_valor" placeholder="100.00"></div>
+    <div><label>Forma de pagamento</label>
+      <select id="g_forma">
+        <option>Débito</option><option>PIX</option><option>Boleto</option><option>Crédito</option>
+      </select>
+    </div>
+    <div id="g_parcelasWrap" style="display:none;"><label>Parcelas</label><input type="number" id="g_parcelas" value="1" min="1"></div>
+    <div style="display:flex; gap:6px;">
+      <button type="submit" class="add" id="g_submitBtn">+ Add</button>
+      <button type="button" class="cancel-edit" id="g_cancelBtn" style="display:none;">Cancelar</button>
+    </div>
+  </form>
+
+  <div class="subsection">
+    <h3>Por competência (mês da compra, todas as formas de pagamento)</h3>
+    <div id="porCompetenciaWrap"></div>
+  </div>
+
+  <button class="toggle-hist" id="toggleHistGastos">▾ Histórico de gastos</button>
+  <div id="historicoGastosWrap" style="display:none;"></div>
+</div>
+
+<div id="fluxoSection" style="display:none;">
+  <h3>Entradas, saídas e saldo por mês</h3>
+  <p style="font-size:12px; color:#aaa; margin-top:-4px;">
+    Saída = débito/PIX/boleto no mês da compra + parcelas de cartão vencendo naquele mês.
+  </p>
+  <div id="fluxoWrap"></div>
+</div>
+
+<div id="rendaSection" style="display:none;">
+  <form id="formRenda">
+    <input type="hidden" id="r_id">
+    <div><label>Categoria</label>
+      <select id="r_categoria"><option>Salário</option><option>Rendimentos</option><option>Outros</option></select>
+    </div>
+    <div><label>Data</label><input type="date" id="r_data"></div>
+    <div><label>Valor</label><input type="number" step="0.01" id="r_valor" placeholder="5000.00"></div>
+    <div style="display:flex; gap:6px;">
+      <button type="submit" class="add" id="r_submitBtn">+ Add</button>
+      <button type="button" class="cancel-edit" id="r_cancelBtn" style="display:none;">Cancelar</button>
+    </div>
+  </form>
+  <div id="rendaWrap"></div>
+</div>
+
+<script>
+/* ============================================================
+   COLE AQUI A URL DO SEU APPS SCRIPT (dessa planilha de gastos)
+   ============================================================ */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw74OCPBA17YAh_1zq1OE2aD4_64vYKftxnVSWHW9SAsdNJWwXggN6UppuxAXFsXpW3DA/exec";
+/* ============================================================ */
+
+let gastos = [];
+let renda = [];
+let tab = "GASTOS";
+let histGastosAberto = false;
+let editando = { tipo: null, id: null }; // 'gasto' | 'renda'
+
+function hoje(){ return new Date().toISOString().slice(0,10); }
+function mesDe(dataStr){ return dataStr ? dataStr.slice(0,7) : ""; } // YYYY-MM
+function somaMeses(mesStr, n){
+  const [ano, mes] = mesStr.split("-").map(Number);
+  const d = new Date(ano, mes - 1 + n, 1);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+}
+function fmt(v){ return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v || 0); }
+function showSaveError(on){ document.getElementById("saveError").style.display = on ? "block" : "none"; }
+function setStatus(txt){ document.getElementById("status").textContent = txt; }
+
+async function loadFromSheet(){
+  if(APPS_SCRIPT_URL.includes("COLE_SUA_URL_AQUI")){
+    document.getElementById("configWarning").style.display = "block";
+    return;
+  }
+  setStatus("Carregando da planilha...");
+  try{
+    const res = await fetch(APPS_SCRIPT_URL);
+    const data = await res.json();
+    gastos = (data.gastos || []).map(g => ({ ...g, id: String(g.id), valor: Number(g.valor), parcelas: Number(g.parcelas) || 1 }));
+    renda = (data.renda || []).map(r => ({ ...r, id: String(r.id), valor: Number(r.valor) }));
+    showSaveError(false);
+    setStatus("Sincronizado com a planilha.");
+  }catch(e){
+    console.error(e);
+    showSaveError(true);
+    setStatus("");
+  }
+  render();
+}
+
+async function saveToSheet(){
+  if(APPS_SCRIPT_URL.includes("COLE_SUA_URL_AQUI")) return;
+  setStatus("Salvando...");
+  try{
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ gastos, renda })
+    });
+    const text = await res.text();
+    let ok = false;
+    try { ok = JSON.parse(text).ok === true; } catch(e2) { ok = false; }
+    if(!ok) throw new Error("Resposta inesperada: " + text.slice(0,200));
+    showSaveError(false);
+    setStatus("Salvo na planilha ✓");
+  }catch(e){
+    console.error("Erro ao salvar:", e);
+    showSaveError(true);
+    setStatus("");
+  }
+}
+
+/* ===================== CÁLCULOS ===================== */
+
+// Retorna lista de {mes, valor} representando em quais meses cada gasto pesa no CAIXA
+function parcelasDoGasto(g){
+  const mesCompra = mesDe(g.data);
+  if(g.formaPagamento !== "Crédito"){
+    return [{ mes: mesCompra, valor: g.valor }];
+  }
+  const n = g.parcelas || 1;
+  const valorParcela = g.valor / n;
+  const lista = [];
+  for(let i=1; i<=n; i++){
+    lista.push({ mes: somaMeses(mesCompra, i), valor: valorParcela });
+  }
+  return lista;
+}
+
+function calcularFluxoPorMes(){
+  const mapa = {}; // mes -> { entradas, saidas }
+  function garantir(mes){ if(!mapa[mes]) mapa[mes] = { entradas:0, saidas:0 }; return mapa[mes]; }
+
+  renda.forEach(r => { garantir(mesDe(r.data)).entradas += r.valor; });
+  gastos.forEach(g => {
+    parcelasDoGasto(g).forEach(p => { garantir(p.mes).saidas += p.valor; });
+  });
+
+  return Object.keys(mapa).sort().map(mes => ({
+    mes, entradas: mapa[mes].entradas, saidas: mapa[mes].saidas, saldo: mapa[mes].entradas - mapa[mes].saidas
+  }));
+}
+
+function calcularComprometidoFuturo(){
+  const mesAtual = hoje().slice(0,7);
+  let total = 0;
+  gastos.forEach(g => {
+    parcelasDoGasto(g).forEach(p => { if(p.mes > mesAtual) total += p.valor; });
+  });
+  return total;
+}
+
+/* ===================== RENDER ===================== */
+
+function render(){
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.getElementById("gastosSection").style.display = tab === "GASTOS" ? "block" : "none";
+  document.getElementById("fluxoSection").style.display = tab === "FLUXO" ? "block" : "none";
+  document.getElementById("rendaSection").style.display = tab === "RENDA" ? "block" : "none";
+
+  const subtitles = {
+    GASTOS: "Lance cada gasto do dia. Categoria já vem pré-cadastrada.",
+    FLUXO: "O que realmente entra e sai da sua conta, mês a mês.",
+    RENDA: "Salário e outras entradas de dinheiro."
+  };
+  document.getElementById("subtitle").textContent = subtitles[tab];
+
+  if(tab === "GASTOS") renderResumoGastos();
+  else if(tab === "FLUXO") renderResumoFluxo();
+  else renderResumoRenda();
+
+  if(tab === "GASTOS"){ renderPorCompetencia(); renderHistoricoGastos(); }
+  else if(tab === "FLUXO"){ renderFluxo(); }
+  else { renderRenda(); }
+}
+
+function renderResumoGastos(){
+  const mesAtual = hoje().slice(0,7);
+  const gastosMes = gastos.filter(g => mesDe(g.data) === mesAtual);
+  const totalMes = gastosMes.reduce((a,g) => a + g.valor, 0);
+  const comprometido = calcularComprometidoFuturo();
+  document.getElementById("summaryWrap").innerHTML = `
+    <div class="summary">
+      <div class="card">
+        <div class="label">Gasto este mês (competência)</div>
+        <div class="value">${fmt(totalMes)}</div>
+        <div class="hint">${gastosMes.length} lançamento(s)</div>
+      </div>
+      <div class="card">
+        <div class="label">Comprometido em faturas futuras</div>
+        <div class="value neg">${fmt(comprometido)}</div>
+        <div class="hint">parcelas de crédito ainda não vencidas</div>
+      </div>
+      <div class="card">
+        <div class="label">Total de lançamentos</div>
+        <div class="value">${gastos.length}</div>
+      </div>
+    </div>`;
+}
+
+function renderResumoFluxo(){
+  const fluxo = calcularFluxoPorMes();
+  const mesAtual = hoje().slice(0,7);
+  const doMes = fluxo.find(f => f.mes === mesAtual) || { entradas:0, saidas:0, saldo:0 };
+  document.getElementById("summaryWrap").innerHTML = `
+    <div class="summary">
+      <div class="card">
+        <div class="label">Entradas este mês</div>
+        <div class="value pos">${fmt(doMes.entradas)}</div>
+      </div>
+      <div class="card">
+        <div class="label">Saídas este mês</div>
+        <div class="value neg">${fmt(doMes.saidas)}</div>
+      </div>
+      <div class="card">
+        <div class="label">Saldo do mês</div>
+        <div class="value ${doMes.saldo>=0?'pos':'neg'}">${fmt(doMes.saldo)}</div>
+      </div>
+    </div>`;
+}
+
+function renderResumoRenda(){
+  const total = renda.reduce((a,r) => a + r.valor, 0);
+  document.getElementById("summaryWrap").innerHTML = `
+    <div class="summary" style="grid-template-columns:1fr;">
+      <div class="card">
+        <div class="label">Total de renda lançada (histórico completo)</div>
+        <div class="value pos">${fmt(total)}</div>
+        <div class="hint">${renda.length} lançamento(s)</div>
+      </div>
+    </div>`;
+}
+
+function renderPorCompetencia(){
+  const wrap = document.getElementById("porCompetenciaWrap");
+  const mesAtual = hoje().slice(0,7);
+  const gastosMes = gastos.filter(g => mesDe(g.data) === mesAtual);
+  if(gastosMes.length === 0){
+    wrap.innerHTML = '<div class="empty">Nenhum gasto lançado neste mês ainda.</div>';
+    return;
+  }
+  const porCategoria = {};
+  gastosMes.forEach(g => { porCategoria[g.categoria] = (porCategoria[g.categoria]||0) + g.valor; });
+  const lista = Object.entries(porCategoria).sort((a,b) => b[1]-a[1]);
+  let html = '<table><thead><tr><th>Categoria</th><th class="right">Total no mês</th></tr></thead><tbody>';
+  lista.forEach(([cat, val]) => {
+    html += '<tr><td>' + cat + '</td><td class="right">' + fmt(val) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderHistoricoGastos(){
+  const btn = document.getElementById("toggleHistGastos");
+  const wrap = document.getElementById("historicoGastosWrap");
+  btn.textContent = (histGastosAberto ? "▴ " : "▾ ") + "Histórico de gastos (" + gastos.length + ")";
+  if(!histGastosAberto || gastos.length === 0){ wrap.innerHTML = ""; wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  const ordenado = [...gastos].sort((a,b) => a.data < b.data ? 1 : -1);
+  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th>Forma</th><th class="right">Parcelas</th><th></th></tr></thead><tbody>';
+  ordenado.forEach(g => {
+    html += '<tr><td>' + g.data + '</td><td>' + g.categoria + '</td><td class="right">' + fmt(g.valor) +
+      '</td><td>' + g.formaPagamento + '</td><td class="right">' + (g.formaPagamento==="Crédito" ? g.parcelas+"x" : "—") +
+      '</td><td class="right"><button class="edit" data-id="' + g.id + '">✏️</button><button class="del" data-id="' + g.id + '">✕</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll(".del").forEach(b => b.addEventListener("click", async () => {
+    gastos = gastos.filter(g => g.id !== b.dataset.id);
+    render(); await saveToSheet();
+  }));
+  wrap.querySelectorAll(".edit").forEach(b => b.addEventListener("click", () => iniciarEdicaoGasto(b.dataset.id)));
+}
+
+function renderFluxo(){
+  const wrap = document.getElementById("fluxoWrap");
+  const fluxo = calcularFluxoPorMes();
+  if(fluxo.length === 0){
+    wrap.innerHTML = '<div class="empty">Sem dados ainda. Lance gastos e rendas primeiro.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Mês</th><th class="right">Entradas</th><th class="right">Saídas</th><th class="right">Saldo</th></tr></thead><tbody>';
+  [...fluxo].reverse().forEach(f => {
+    html += '<tr><td>' + f.mes + '</td><td class="right pos">' + fmt(f.entradas) + '</td><td class="right neg">' + fmt(f.saidas) +
+      '</td><td class="right ' + (f.saldo>=0?'pos':'neg') + '">' + fmt(f.saldo) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRenda(){
+  const wrap = document.getElementById("rendaWrap");
+  if(renda.length === 0){
+    wrap.innerHTML = '<div class="empty">Nenhuma renda lançada ainda.</div>';
+    return;
+  }
+  const ordenado = [...renda].sort((a,b) => a.data < b.data ? 1 : -1);
+  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th></th></tr></thead><tbody>';
+  ordenado.forEach(r => {
+    html += '<tr><td>' + r.data + '</td><td>' + r.categoria + '</td><td class="right">' + fmt(r.valor) +
+      '</td><td class="right"><button class="edit" data-id="' + r.id + '">✏️</button><button class="del" data-id="' + r.id + '">✕</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll(".del").forEach(b => b.addEventListener("click", async () => {
+    renda = renda.filter(r => r.id !== b.dataset.id);
+    render(); await saveToSheet();
+  }));
+  wrap.querySelectorAll(".edit").forEach(b => b.addEventListener("click", () => iniciarEdicaoRenda(b.dataset.id)));
+}
+
+/* ===================== EDIÇÃO ===================== */
+
+function iniciarEdicaoGasto(id){
+  const g = gastos.find(x => x.id === id);
+  if(!g) return;
+  editando = { tipo: "gasto", id };
+  document.getElementById("g_id").value = id;
+  document.getElementById("g_categoria").value = g.categoria;
+  document.getElementById("g_data").value = g.data;
+  document.getElementById("g_valor").value = g.valor;
+  document.getElementById("g_forma").value = g.formaPagamento;
+  document.getElementById("g_parcelas").value = g.parcelas || 1;
+  atualizarVisibilidadeParcelas();
+  const btn = document.getElementById("g_submitBtn");
+  btn.textContent = "Salvar edição"; btn.classList.add("editing");
+  document.getElementById("g_cancelBtn").style.display = "inline-block";
+}
+function cancelarEdicaoGasto(){
+  editando = { tipo: null, id: null };
+  document.getElementById("g_id").value = "";
+  document.getElementById("g_valor").value = "";
+  document.getElementById("g_data").value = hoje();
+  document.getElementById("g_parcelas").value = 1;
+  atualizarVisibilidadeParcelas();
+  const btn = document.getElementById("g_submitBtn");
+  btn.textContent = "+ Add"; btn.classList.remove("editing");
+  document.getElementById("g_cancelBtn").style.display = "none";
+}
+
+function iniciarEdicaoRenda(id){
+  const r = renda.find(x => x.id === id);
+  if(!r) return;
+  editando = { tipo: "renda", id };
+  document.getElementById("r_id").value = id;
+  document.getElementById("r_categoria").value = r.categoria;
+  document.getElementById("r_data").value = r.data;
+  document.getElementById("r_valor").value = r.valor;
+  const btn = document.getElementById("r_submitBtn");
+  btn.textContent = "Salvar edição"; btn.classList.add("editing");
+  document.getElementById("r_cancelBtn").style.display = "inline-block";
+}
+function cancelarEdicaoRenda(){
+  editando = { tipo: null, id: null };
+  document.getElementById("r_id").value = "";
+  document.getElementById("r_valor").value = "";
+  document.getElementById("r_data").value = hoje();
+  const btn = document.getElementById("r_submitBtn");
+  btn.textContent = "+ Add"; btn.classList.remove("editing");
+  document.getElementById("r_cancelBtn").style.display = "none";
+}
+
+function atualizarVisibilidadeParcelas(){
+  const forma = document.getElementById("g_forma").value;
+  document.getElementById("g_parcelasWrap").style.display = forma === "Crédito" ? "block" : "none";
+}
+
+/* ===================== EVENTOS ===================== */
+
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
+document.getElementById("toggleHistGastos").addEventListener("click", () => { histGastosAberto = !histGastosAberto; render(); });
+document.getElementById("g_forma").addEventListener("change", atualizarVisibilidadeParcelas);
+
+document.getElementById("g_data").value = hoje();
+document.getElementById("formGasto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const valor = parseFloat(document.getElementById("g_valor").value);
+  if(!valor) return;
+  const categoria = document.getElementById("g_categoria").value;
+  const data = document.getElementById("g_data").value;
+  const formaPagamento = document.getElementById("g_forma").value;
+  const parcelas = formaPagamento === "Crédito" ? (parseInt(document.getElementById("g_parcelas").value) || 1) : 1;
+
+  if(editando.tipo === "gasto" && editando.id){
+    const idx = gastos.findIndex(g => g.id === editando.id);
+    if(idx > -1) gastos[idx] = { id: editando.id, categoria, data, valor, formaPagamento, parcelas };
+  } else {
+    gastos.push({ id: Date.now().toString(), categoria, data, valor, formaPagamento, parcelas });
+  }
+  cancelarEdicaoGasto();
+  render();
+  await saveToSheet();
+});
+document.getElementById("g_cancelBtn").addEventListener("click", () => { cancelarEdicaoGasto(); render(); });
+
+document.getElementById("r_data").value = hoje();
+document.getElementById("formRenda").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const valor = parseFloat(document.getElementById("r_valor").value);
+  if(!valor) return;
+  const categoria = document.getElementById("r_categoria").value;
+  const data = document.getElementById("r_data").value;
+
+  if(editando.tipo === "renda" && editando.id){
+    const idx = renda.findIndex(r => r.id === editando.id);
+    if(idx > -1) renda[idx] = { id: editando.id, categoria, data, valor };
+  } else {
+    renda.push({ id: Date.now().toString(), categoria, data, valor });
+  }
+  cancelarEdicaoRenda();
+  render();
+  await saveToSheet();
+});
+document.getElementById("r_cancelBtn").addEventListener("click", () => { cancelarEdicaoRenda(); render(); });
+
+render();
+loadFromSheet();
+</script>
+</body>
+</html>
