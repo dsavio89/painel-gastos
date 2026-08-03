@@ -152,15 +152,15 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw74OCPBA17YAh_
 
 const CATEGORIAS_DESPESA = {
   "Casa": ["IPTU","Água","Luz","Reparos"],
-  "Cotidiano": ["Supermercado","iFood","Diarista"],
+  "Cotidiano": ["Supermercado","iFood","Mensalista"],
   "Transporte": ["Combustível","Seguro","Reparos","Estacionamento","IPVA"],
   "Saúde": ["Academia","Plano de saúde","Farmácia","Suplementos"],
   "Férias": ["Passagens","Acomodações","Alimentação","Souvenirs"],
   "Lazer": ["Barzinhos","Restaurantes","Equipamentos de esporte"],
-  "Assinaturas": ["Spotify","Internet/Celular","TV"],
+  "Assinaturas": ["Spotify","Internet/Celular","TV","Apps Apple"],
   "Pessoal": ["Vestuário","Amazon","Mercado Livre","Barbeiro"],
-  "Obrigações Financeiras": ["Empréstimos/Dívidas"],
-  "Diversos": ["Outros"]
+  "Obrigações Financeiras": ["Empréstimos/Dívidas","Consórcios","Investimento"],
+  "Diversos": []
 };
 const MESES_NOMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -173,7 +173,7 @@ function popularSubcategorias(){
   const categoria = document.getElementById("g_categoria").value;
   const sub = document.getElementById("g_subcategoria");
   const lista = CATEGORIAS_DESPESA[categoria] || [];
-  sub.innerHTML = lista.map(s => `<option>${s}</option>`).join("") + '<option value="__outra__">Outra...</option>';
+  sub.innerHTML = lista.map(s => `<option>${s}</option>`).join("") + '<option value="__outra__">Outra</option>';
   atualizarVisibilidadeSubOutra();
 }
 function atualizarVisibilidadeSubOutra(){
