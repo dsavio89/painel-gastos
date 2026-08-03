@@ -47,7 +47,7 @@
   table.matriz { font-size:11px; }
   table.matriz th, table.matriz td { padding:3px 5px; white-space:nowrap; }
   table.matriz tr.categoria-header td, table.matriz tr.categoria-header th { background:#f0f0ee; font-weight:700; font-size:13px; }
-  table.matriz tr.categoria-total td { font-weight:700; font-size:12px; border-top:2px solid #185FA5; border-bottom:1px solid #ddd; background:#f7f9fb; }
+  table.matriz tr.categoria-total td { font-weight:700; font-size:12px; border-top:2px solid #185FA5; border-bottom:1px solid #ddd; background:#f7f9fb; padding-bottom:8px; }
   table.matriz td.subcategoria { padding-left:16px; color:#555; }
   table.matriz tr.total-geral td { font-weight:700; background:#eef4f1; border-top:2px solid #185FA5; }
   .chart-box { display:flex; align-items:center; gap:14px; min-height:130px; }
@@ -234,6 +234,11 @@ function somaMeses(mesStr, n){
   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
 }
 function fmt(v){ return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v || 0); }
+function fmtDataBR(dataStr){
+  if(!dataStr) return "—";
+  const [ano, mes, dia] = dataStr.slice(0,10).split("-");
+  return dia + "/" + mes + "/" + ano;
+}
 function fmtCompacto(v){ return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v || 0); }
 function showSaveError(on){ document.getElementById("saveError").style.display = on ? "block" : "none"; }
 function setStatus(txt){ document.getElementById("status").textContent = txt; }
@@ -512,7 +517,7 @@ function renderHistoricoGastos(){
       const [ano, mes] = mesG.split("-");
       html += '<tr class="categoria-header"><td colspan="7">' + MESES_NOMES[parseInt(mes,10)-1] + '/' + ano + '</td></tr>';
     }
-    html += '<tr><td>' + g.data + '</td><td>' + g.categoria + '</td><td class="muted">' + (g.subcategoria || '—') + '</td><td class="right">' + fmt(g.valor) +
+    html += '<tr><td>' + fmtDataBR(g.data) + '</td><td>' + g.categoria + '</td><td class="muted">' + (g.subcategoria || '—') + '</td><td class="right">' + fmt(g.valor) +
       '</td><td>' + g.formaPagamento + '</td><td class="right">' + (ehCartao(g.formaPagamento) ? g.parcelas+"x" : "—") +
       '</td><td class="right"><button class="edit" data-id="' + g.id + '">✏️</button><button class="del" data-id="' + g.id + '">✕</button></td></tr>';
   });
@@ -597,7 +602,7 @@ function renderRenda(){
   const ordenado = [...renda].sort((a,b) => a.data < b.data ? 1 : -1);
   let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th></th></tr></thead><tbody>';
   ordenado.forEach(r => {
-    html += '<tr><td>' + r.data + '</td><td>' + r.categoria + '</td><td class="right">' + fmt(r.valor) +
+    html += '<tr><td>' + fmtDataBR(r.data) + '</td><td>' + r.categoria + '</td><td class="right">' + fmt(r.valor) +
       '</td><td class="right"><button class="edit" data-id="' + r.id + '">✏️</button><button class="del" data-id="' + r.id + '">✕</button></td></tr>';
   });
   html += '</tbody></table>';
