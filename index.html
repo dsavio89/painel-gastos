@@ -227,7 +227,7 @@ function desenharGraficoPizza(elId, dados){
 }
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
-function mesDe(dataStr){ return dataStr ? dataStr.slice(0,7) : ""; } // YYYY-MM
+function mesDe(dataStr){ return dataStr ? String(dataStr).slice(0,7) : ""; } // YYYY-MM
 function somaMeses(mesStr, n){
   const [ano, mes] = mesStr.split("-").map(Number);
   const d = new Date(ano, mes - 1 + n, 1);
@@ -289,7 +289,7 @@ async function saveToSheet(){
 /* ===================== CÁLCULOS ===================== */
 
 // Retorna lista de {mes, valor} representando em quais meses cada gasto pesa no CAIXA
-function ehCartao(formaPagamento){ return (formaPagamento || "").startsWith("Cartão"); }
+function ehCartao(formaPagamento){ return String(formaPagamento || "").startsWith("Cartão"); }
 
 function parcelasDoGasto(g){
   const mesCompra = mesDe(g.data);
@@ -433,7 +433,8 @@ function renderMatrizCategoriaMes(){
 
   gastos.forEach(g => {
     if(mesDe(g.data).slice(0,4) !== ano) return;
-    const mesIdx = parseInt(g.data.slice(5,7), 10) - 1;
+    const mesIdx = parseInt(String(g.data).slice(5,7), 10) - 1;
+    if(isNaN(mesIdx) || mesIdx < 0 || mesIdx > 11) return;
     if(!soma[g.categoria]) return;
     if(!soma[g.categoria][g.subcategoria]){
       soma[g.categoria][g.subcategoria] = Array(12).fill(0);
