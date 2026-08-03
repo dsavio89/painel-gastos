@@ -46,8 +46,8 @@
   .subsection { margin-bottom:24px; }
   table.matriz { font-size:11px; }
   table.matriz th, table.matriz td { padding:3px 5px; white-space:nowrap; }
-  table.matriz tr.categoria-header td, table.matriz tr.categoria-header th { background:#f0f0ee; font-weight:600; }
-  table.matriz tr.categoria-total td { font-weight:600; border-top:1px solid #ddd; }
+  table.matriz tr.categoria-header td, table.matriz tr.categoria-header th { background:#f0f0ee; font-weight:700; font-size:13px; }
+  table.matriz tr.categoria-total td { font-weight:700; font-size:12px; border-top:2px solid #185FA5; border-bottom:1px solid #ddd; background:#f7f9fb; }
   table.matriz td.subcategoria { padding-left:16px; color:#555; }
   table.matriz tr.total-geral td { font-weight:700; background:#eef4f1; border-top:2px solid #185FA5; }
   .chart-box { display:flex; align-items:center; gap:14px; min-height:130px; }
@@ -478,20 +478,53 @@ function renderHistoricoGastos(){
   btn.textContent = (histGastosAberto ? "▴ " : "▾ ") + "Histórico de gastos (" + gastos.length + ")";
   if(!histGastosAberto || gastos.length === 0){ wrap.innerHTML = ""; wrap.style.display = "none"; return; }
   wrap.style.display = "block";
+
   const ordenado = [...gastos].sort((a,b) => a.data < b.data ? 1 : -1);
-  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th>Subcategoria</th><th class="right">Valor</th><th>Forma</th><th class="right">Parcelas</th><th></th></tr></thead><tbody>';
-  ordenado.forEach(g => {
+  const totalPaginas = Math.max(1, Math.ceil(ordenado.length / histPageSize));
+  if(histPage >= totalPaginas) histPage = totalPaginas - 1;
+  if(histPage < 0) histPage = 0;
+  const inicio = histPage * histPageSize;
+  const pagina = ordenado.slice(inicio, inicio + histPageSize);
+
+  let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px; color:#666;">
+    <div>
+      <label style="display:inline; margin-right:4px;">Por página:</label>
+      <select id="histPageSizeSel" style="width:auto; display:inline; padding:2px 4px;">
+        <option value="20" ${histPageSize===20?'selected':''}>20</option>
+        <option value="30" ${histPageSize===30?'selected':''}>30</option>
+      </select>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="histPrevBtn" class="cancel-edit" ${histPage===0?'disabled':''}>◀</button>
+      <span>Página ${histPage+1} de ${totalPaginas}</span>
+      <button id="histNextBtn" class="cancel-edit" ${histPage>=totalPaginas-1?'disabled':''}>▶</button>
+    </div>
+  </div>`;
+
+  let mesAtualExibido = null;
+  html += '<table><thead><tr><th>Data</th><th>Categoria</th><th>Subcategoria</th><th class="right">Valor</th><th>Forma</th><th class="right">Parcelas</th><th></th></tr></thead><tbody>';
+  pagina.forEach(g => {
+    const mesG = mesDe(g.data);
+    if(mesG !== mesAtualExibido){
+      mesAtualExibido = mesG;
+      const [ano, mes] = mesG.split("-");
+      html += '<tr class="categoria-header"><td colspan="7">' + MESES_NOMES[parseInt(mes,10)-1] + '/' + ano + '</td></tr>';
+    }
     html += '<tr><td>' + g.data + '</td><td>' + g.categoria + '</td><td class="muted">' + (g.subcategoria || '—') + '</td><td class="right">' + fmt(g.valor) +
       '</td><td>' + g.formaPagamento + '</td><td class="right">' + (ehCartao(g.formaPagamento) ? g.parcelas+"x" : "—") +
       '</td><td class="right"><button class="edit" data-id="' + g.id + '">✏️</button><button class="del" data-id="' + g.id + '">✕</button></td></tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+
   wrap.querySelectorAll(".del").forEach(b => b.addEventListener("click", async () => {
     gastos = gastos.filter(g => g.id !== b.dataset.id);
     render(); await saveToSheet();
   }));
   wrap.querySelectorAll(".edit").forEach(b => b.addEventListener("click", () => iniciarEdicaoGasto(b.dataset.id)));
+  document.getElementById("histPageSizeSel").addEventListener("change", (e) => { histPageSize = parseInt(e.target.value); histPage = 0; render(); });
+  document.getElementById("histPrevBtn").addEventListener("click", () => { histPage--; render(); });
+  document.getElementById("histNextBtn").addEventListener("click", () => { histPage++; render(); });
 }
 
 function renderFluxo(){
