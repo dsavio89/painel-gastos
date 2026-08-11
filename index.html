@@ -112,6 +112,8 @@
 
   <button class="toggle-hist" id="toggleHistGastos">▾ Histórico de gastos</button>
   <div id="historicoGastosWrap" style="display:none;"></div>
+
+  <button class="toggle-hist" id="btnLimparDuplicados" style="margin-top:8px;">🧹 Remover lançamentos duplicados</button>
 </div>
 
 <div id="fluxoSection" style="display:none;">
@@ -684,6 +686,40 @@ function atualizarVisibilidadeParcelas(){
 
 /* ===================== EVENTOS ===================== */
 
+async function removerDuplicados(){
+  function dedupe(lista, campos){
+    const vistos = new Set();
+    const unicos = [];
+    // ordena por id (mais antigo primeiro) para manter sempre o lançamento original
+    const ordenado = [...lista].sort((a,b) => String(a.id).localeCompare(String(b.id)));
+    ordenado.forEach(item => {
+      const chave = campos.map(c => item[c]).join("|");
+      if(!vistos.has(chave)){
+        vistos.add(chave);
+        unicos.push(item);
+      }
+    });
+    return unicos;
+  }
+
+  const gastosAntes = gastos.length;
+  const rendaAntes = renda.length;
+  gastos = dedupe(gastos, ["data","categoria","subcategoria","valor","formaPagamento","parcelas"]);
+  renda = dedupe(renda, ["data","categoria","valor"]);
+  const removidos = (gastosAntes - gastos.length) + (rendaAntes - renda.length);
+
+  if(removidos === 0){
+    alert("Nenhuma duplicata encontrada.");
+    return;
+  }
+  if(!confirm("Encontrei " + removidos + " lançamento(s) duplicado(s). Remover e salvar na planilha?")) return;
+
+  render();
+  await saveToSheet();
+  alert(removidos + " duplicata(s) removida(s) com sucesso.");
+}
+document.getElementById("btnLimparDuplicados").addEventListener("click", removerDuplicados);
+
 document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
 document.getElementById("toggleHistGastos").addEventListener("click", () => { histGastosAberto = !histGastosAberto; render(); });
 document.getElementById("g_forma").addEventListener("change", atualizarVisibilidadeParcelas);
@@ -694,6 +730,8 @@ document.getElementById("g_categoria").addEventListener("change", popularSubcate
 document.getElementById("g_subcategoria").addEventListener("change", atualizarVisibilidadeSubOutra);
 document.getElementById("formGasto").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const submitBtn = document.getElementById("g_submitBtn");
+  if(submitBtn.disabled) return; // evita clique duplo enquanto já está salvando
   const valor = parseFloat(document.getElementById("g_valor").value);
   if(!valor) return;
   const categoria = document.getElementById("g_categoria").value;
@@ -706,6 +744,7 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
   const formaPagamento = document.getElementById("g_forma").value;
   const parcelas = ehCartao(formaPagamento) ? (parseInt(document.getElementById("g_parcelas").value) || 1) : 1;
 
+  submitBtn.disabled = true;
   if(editando.tipo === "gasto" && editando.id){
     const idx = gastos.findIndex(g => g.id === editando.id);
     if(idx > -1) gastos[idx] = { id: editando.id, categoria, subcategoria, data, valor, formaPagamento, parcelas };
@@ -715,17 +754,21 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
   cancelarEdicaoGasto();
   render();
   await saveToSheet();
+  document.getElementById("g_submitBtn").disabled = false;
 });
 document.getElementById("g_cancelBtn").addEventListener("click", () => { cancelarEdicaoGasto(); render(); });
 
 document.getElementById("r_data").value = hoje();
 document.getElementById("formRenda").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const submitBtnR = document.getElementById("r_submitBtn");
+  if(submitBtnR.disabled) return; // evita clique duplo enquanto já está salvando
   const valor = parseFloat(document.getElementById("r_valor").value);
   if(!valor) return;
   const categoria = document.getElementById("r_categoria").value;
   const data = document.getElementById("r_data").value;
 
+  submitBtnR.disabled = true;
   if(editando.tipo === "renda" && editando.id){
     const idx = renda.findIndex(r => r.id === editando.id);
     if(idx > -1) renda[idx] = { id: editando.id, categoria, data, valor };
@@ -735,6 +778,7 @@ document.getElementById("formRenda").addEventListener("submit", async (e) => {
   cancelarEdicaoRenda();
   render();
   await saveToSheet();
+  document.getElementById("r_submitBtn").disabled = false;
 });
 document.getElementById("r_cancelBtn").addEventListener("click", () => { cancelarEdicaoRenda(); render(); });
 
