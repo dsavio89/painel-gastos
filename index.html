@@ -71,6 +71,7 @@
   <button class="tab active" data-tab="GASTOS">Gastos</button>
   <button class="tab" data-tab="FLUXO">Fluxo de caixa</button>
   <button class="tab" data-tab="RENDA">Renda</button>
+  <button class="tab" data-tab="GRAFICOS">Gráficos</button>
 </div>
 
 <div id="summaryWrap"></div>
@@ -145,6 +146,28 @@
     </div>
   </form>
   <div id="rendaWrap"></div>
+</div>
+
+<div id="graficosSection" style="display:none;">
+  <div class="subsection">
+    <h3>Distribuição do mês atual</h3>
+    <div class="card chart-box" id="graf2PizzaMesWrap" style="margin-bottom:12px;"></div>
+  </div>
+
+  <div class="subsection">
+    <h3>Evolução total de gastos por mês</h3>
+    <div id="graf2EvolucaoWrap"></div>
+  </div>
+
+  <div class="subsection">
+    <h3>Comparativo por categoria: mês atual x mês anterior</h3>
+    <div id="graf2ComparativoWrap"></div>
+  </div>
+
+  <div class="subsection">
+    <h3>O que mais mudou (vs. mês anterior)</h3>
+    <div id="graf2RankingMudancaWrap"></div>
+  </div>
 </div>
 
 <script>
@@ -339,21 +362,114 @@ function render(){
   document.getElementById("gastosSection").style.display = tab === "GASTOS" ? "block" : "none";
   document.getElementById("fluxoSection").style.display = tab === "FLUXO" ? "block" : "none";
   document.getElementById("rendaSection").style.display = tab === "RENDA" ? "block" : "none";
+  document.getElementById("graficosSection").style.display = tab === "GRAFICOS" ? "block" : "none";
 
   const subtitles = {
     GASTOS: "Lance cada gasto do dia. Categoria já vem pré-cadastrada.",
     FLUXO: "O que realmente entra e sai da sua conta, mês a mês.",
-    RENDA: "Salário e outras entradas de dinheiro."
+    RENDA: "Salário e outras entradas de dinheiro.",
+    GRAFICOS: "Compare meses e veja onde seu gasto mais mudou."
   };
   document.getElementById("subtitle").textContent = subtitles[tab];
 
   if(tab === "GASTOS") renderResumoGastos();
   else if(tab === "FLUXO") renderResumoFluxo();
-  else renderResumoRenda();
+  else if(tab === "RENDA") renderResumoRenda();
 
   if(tab === "GASTOS"){ renderGraficoCategoriaMes(); renderMatrizCategoriaMes(); renderHistoricoGastos(); renderFaturaResumoGastos(); }
   else if(tab === "FLUXO"){ renderFluxo(); renderFatura(); }
-  else { renderRenda(); }
+  else if(tab === "RENDA"){ renderRenda(); }
+  else if(tab === "GRAFICOS"){ renderGraficosComparativos(); }
+}
+
+function renderGraficosComparativos(){
+  const mesAtual = hoje().slice(0,7);
+  const mesAnterior = somaMeses(mesAtual, -1);
+  const nomesMes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  function labelMes(m){ const [a,mm] = m.split("-"); return nomesMes[parseInt(mm,10)-1] + "/" + a.slice(2); }
+
+  // ---- 1) Pizza do mês atual (reaproveita a função que já existe) ----
+  const gastosMesAtual = gastos.filter(g => mesDe(g.data) === mesAtual);
+  const porCategoriaAtual = {};
+  gastosMesAtual.forEach(g => { porCategoriaAtual[g.categoria] = (porCategoriaAtual[g.categoria]||0) + g.valor; });
+  const listaPizza = Object.entries(porCategoriaAtual).sort((a,b) => b[1]-a[1])
+    .map(([cat,val],i) => ({ nome: cat, valor: val, cor: corParaCategoria(cat,i) }));
+  desenharGraficoPizza("graf2PizzaMesWrap", listaPizza);
+
+  // ---- 2) Evolução total por mês (últimos 6 meses com dado) ----
+  const totalPorMes = {};
+  gastos.forEach(g => { const m = mesDe(g.data); totalPorMes[m] = (totalPorMes[m]||0) + Number(g.valor); });
+  const mesesOrdenados = Object.keys(totalPorMes).sort().slice(-6);
+  const maxEvolucao = Math.max(...mesesOrdenados.map(m => totalPorMes[m]), 1);
+  let htmlEvolucao = '<div style="display:flex; align-items:flex-end; gap:10px; height:140px; padding:8px 4px;">';
+  mesesOrdenados.forEach(m => {
+    const altura = Math.round((totalPorMes[m] / maxEvolucao) * 110);
+    htmlEvolucao += `<div style="flex:1; text-align:center;">
+      <div style="font-size:11px; color:#777; margin-bottom:4px;">${fmt(totalPorMes[m])}</div>
+      <div style="background:#185FA5; border-radius:4px 4px 0 0; height:${altura}px;"></div>
+      <div style="font-size:11px; color:#777; margin-top:4px;">${labelMes(m)}</div>
+    </div>`;
+  });
+  htmlEvolucao += '</div>';
+  document.getElementById("graf2EvolucaoWrap").innerHTML = mesesOrdenados.length ? htmlEvolucao : '<div class="empty">Sem dados ainda.</div>';
+
+  // ---- 3) Comparativo por categoria: mês atual x mês anterior ----
+  const gastosMesAnterior = gastos.filter(g => mesDe(g.data) === mesAnterior);
+  const porCategoriaAnterior = {};
+  gastosMesAnterior.forEach(g => { porCategoriaAnterior[g.categoria] = (porCategoriaAnterior[g.categoria]||0) + g.valor; });
+  const todasCategorias = [...new Set([...Object.keys(porCategoriaAtual), ...Object.keys(porCategoriaAnterior)])]
+    .sort((a,b) => (porCategoriaAtual[b]||0) - (porCategoriaAtual[a]||0));
+  const maxComparativo = Math.max(...todasCategorias.map(c => Math.max(porCategoriaAtual[c]||0, porCategoriaAnterior[c]||0)), 1);
+  let htmlComparativo = '';
+  if(todasCategorias.length === 0){
+    htmlComparativo = '<div class="empty">Sem dados suficientes ainda.</div>';
+  } else {
+    todasCategorias.forEach(cat => {
+      const vAtual = porCategoriaAtual[cat] || 0;
+      const vAnterior = porCategoriaAnterior[cat] || 0;
+      htmlComparativo += `<div style="margin-bottom:12px;">
+        <div style="font-size:13px; margin-bottom:3px;">${cat}</div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+          <div style="width:56px; font-size:11px; color:#aaa;">${labelMes(mesAnterior)}</div>
+          <div style="flex:1; background:#f0f0ee; border-radius:4px; height:10px;"><div style="width:${(vAnterior/maxComparativo*100)}%; background:#c9c9c3; height:100%; border-radius:4px;"></div></div>
+          <div style="width:80px; text-align:right; font-size:12px; color:#777;">${fmt(vAnterior)}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div style="width:56px; font-size:11px; color:#185FA5;">${labelMes(mesAtual)}</div>
+          <div style="flex:1; background:#f0f0ee; border-radius:4px; height:10px;"><div style="width:${(vAtual/maxComparativo*100)}%; background:#185FA5; height:100%; border-radius:4px;"></div></div>
+          <div style="width:80px; text-align:right; font-size:12px; font-weight:600;">${fmt(vAtual)}</div>
+        </div>
+      </div>`;
+    });
+  }
+  document.getElementById("graf2ComparativoWrap").innerHTML = htmlComparativo;
+
+  // ---- 4) O que mais mudou (ranking de variação) ----
+  const variacoes = todasCategorias.map(cat => {
+    const vAtual = porCategoriaAtual[cat] || 0;
+    const vAnterior = porCategoriaAnterior[cat] || 0;
+    const diff = vAtual - vAnterior;
+    const pct = vAnterior > 0 ? (diff / vAnterior * 100) : (vAtual > 0 ? 100 : 0);
+    return { cat, diff, pct, vAtual, vAnterior };
+  }).filter(v => v.vAtual > 0 || v.vAnterior > 0)
+    .sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff))
+    .slice(0, 6);
+  let htmlRanking = '';
+  if(variacoes.length === 0){
+    htmlRanking = '<div class="empty">Sem dados suficientes pra comparar ainda.</div>';
+  } else {
+    variacoes.forEach(v => {
+      const subiu = v.diff > 0;
+      const cor = subiu ? "#c0392b" : "#0F6E56";
+      const seta = subiu ? "▲" : "▼";
+      const pctTxt = isFinite(v.pct) ? Math.abs(v.pct).toFixed(0) + "%" : "";
+      htmlRanking += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0ee; font-size:13px;">
+        <span>${v.cat}</span>
+        <span style="color:${cor}; font-weight:600;">${seta} ${fmt(Math.abs(v.diff))} ${pctTxt ? "(" + pctTxt + ")" : ""}</span>
+      </div>`;
+    });
+  }
+  document.getElementById("graf2RankingMudancaWrap").innerHTML = htmlRanking;
 }
 
 function renderResumoGastos(){
