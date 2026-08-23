@@ -76,6 +76,8 @@
 <div id="summaryWrap"></div>
 
 <div id="gastosSection">
+  <div id="faturaResumoWrap" style="margin-bottom:16px;"></div>
+
   <form id="formGasto">
     <input type="hidden" id="g_id">
     <div><label>Categoria</label>
@@ -349,7 +351,7 @@ function render(){
   else if(tab === "FLUXO") renderResumoFluxo();
   else renderResumoRenda();
 
-  if(tab === "GASTOS"){ renderGraficoCategoriaMes(); renderMatrizCategoriaMes(); renderHistoricoGastos(); }
+  if(tab === "GASTOS"){ renderGraficoCategoriaMes(); renderMatrizCategoriaMes(); renderHistoricoGastos(); renderFaturaResumoGastos(); }
   else if(tab === "FLUXO"){ renderFluxo(); renderFatura(); }
   else { renderRenda(); }
 }
@@ -551,6 +553,27 @@ function renderFluxo(){
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+function renderFaturaResumoGastos(){
+  const wrap = document.getElementById("faturaResumoWrap");
+  const mapa = calcularFaturaPorCartao();
+  const mesAtual = hoje().slice(0,7);
+  let total = 0;
+  const porCartao = [];
+  Object.keys(mapa).forEach(cartao => {
+    const valor = mapa[cartao][mesAtual] || 0;
+    if(valor > 0){ porCartao.push({ cartao: cartao.replace("Cartão ", ""), valor }); total += valor; }
+  });
+  if(total === 0){ wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `
+    <div class="card" style="border:1px solid #185FA5;">
+      <div class="label">Fatura deste mês</div>
+      <div class="value" style="color:#185FA5;">R$ ${total.toFixed(2).replace(".",",")}</div>
+      <div style="display:flex; gap:16px; font-size:12px; color:#777; margin-top:6px; flex-wrap:wrap;">
+        ${porCartao.map(c => `<span>${c.cartao} <b style="color:#1f1f1f;">R$ ${c.valor.toFixed(2).replace(".",",")}</b></span>`).join("")}
+      </div>
+    </div>`;
 }
 
 function calcularFaturaPorCartao(){
