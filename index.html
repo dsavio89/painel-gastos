@@ -558,22 +558,38 @@ function renderFluxo(){
 function renderFaturaResumoGastos(){
   const wrap = document.getElementById("faturaResumoWrap");
   const mapa = calcularFaturaPorCartao();
-  const mesAtual = hoje().slice(0,7);
-  let total = 0;
-  const porCartao = [];
-  Object.keys(mapa).forEach(cartao => {
-    const valor = mapa[cartao][mesAtual] || 0;
-    if(valor > 0){ porCartao.push({ cartao: cartao.replace("Cartão ", ""), valor }); total += valor; }
-  });
-  if(total === 0){ wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `
-    <div class="card" style="border:1px solid #185FA5;">
-      <div class="label">Fatura deste mês</div>
-      <div class="value" style="color:#185FA5;">R$ ${total.toFixed(2).replace(".",",")}</div>
+  const mesAtualStr = hoje().slice(0,7);
+  const [ano, mes] = mesAtualStr.split("-").map(Number);
+  const dataProx = new Date(ano, mes, 1); // mês seguinte
+  const mesProxStr = dataProx.getFullYear() + "-" + String(dataProx.getMonth()+1).padStart(2,"0");
+
+  function montarBloco(mesRef){
+    let total = 0;
+    const porCartao = [];
+    Object.keys(mapa).forEach(cartao => {
+      const valor = mapa[cartao][mesRef] || 0;
+      if(valor > 0){ porCartao.push({ cartao: cartao.replace("Cartão ", ""), valor }); total += valor; }
+    });
+    return { total, porCartao };
+  }
+
+  const atual = montarBloco(mesAtualStr);
+  const proximo = montarBloco(mesProxStr);
+
+  function cardHtml(titulo, bloco){
+    if(bloco.total === 0) return "";
+    return `
+    <div class="card" style="border:1px solid #185FA5; flex:1; min-width:220px;">
+      <div class="label">${titulo}</div>
+      <div class="value" style="color:#185FA5;">R$ ${bloco.total.toFixed(2).replace(".",",")}</div>
       <div style="display:flex; gap:16px; font-size:12px; color:#777; margin-top:6px; flex-wrap:wrap;">
-        ${porCartao.map(c => `<span>${c.cartao} <b style="color:#1f1f1f;">R$ ${c.valor.toFixed(2).replace(".",",")}</b></span>`).join("")}
+        ${bloco.porCartao.map(c => `<span>${c.cartao} <b style="color:#1f1f1f;">R$ ${c.valor.toFixed(2).replace(".",",")}</b></span>`).join("")}
       </div>
     </div>`;
+  }
+
+  const html = cardHtml("Fatura deste mês", atual) + cardHtml("Fatura do próximo mês", proximo);
+  wrap.innerHTML = html ? `<div style="display:flex; gap:12px; flex-wrap:wrap;">${html}</div>` : "";
 }
 
 function calcularFaturaPorCartao(){
@@ -619,20 +635,55 @@ function renderFatura(){
   wrap.innerHTML = html;
 }
 
+let mesesRendaAbertos = {};
 function renderRenda(){
   const wrap = document.getElementById("rendaWrap");
   if(renda.length === 0){
     wrap.innerHTML = '<div class="empty">Nenhuma renda lançada ainda.</div>';
     return;
   }
-  const ordenado = [...renda].sort((a,b) => a.data < b.data ? 1 : -1);
-  let html = '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th></th></tr></thead><tbody>';
-  ordenado.forEach(r => {
-    html += '<tr><td>' + fmtDataBR(r.data) + '</td><td>' + r.categoria + '</td><td class="right">' + fmt(r.valor) +
-      '</td><td class="right"><button class="edit" data-id="' + r.id + '">✏️</button><button class="del" data-id="' + r.id + '">✕</button></td></tr>';
+  const porMes = {};
+  renda.forEach(r => {
+    const mes = r.data.slice(0,7);
+    if(!porMes[mes]) porMes[mes] = [];
+    porMes[mes].push(r);
   });
-  html += '</tbody></table>';
+  const meses = Object.keys(porMes).sort().reverse();
+  const nomesMes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  // por padrão, deixa o mês mais recente aberto na primeira vez
+  if(Object.keys(mesesRendaAbertos).length === 0 && meses.length > 0){
+    mesesRendaAbertos[meses[0]] = true;
+  }
+
+  let html = '';
+  meses.forEach(mes => {
+    const itens = [...porMes[mes]].sort((a,b) => a.data < b.data ? 1 : -1);
+    const totalMes = itens.reduce((s,r) => s + Number(r.valor), 0);
+    const [ano, mm] = mes.split("-");
+    const label = nomesMes[parseInt(mm,10)-1] + "/" + ano;
+    const aberto = !!mesesRendaAbertos[mes];
+    html += '<div class="mes-renda-bloco" style="margin-bottom:8px;">';
+    html += '<button class="toggle-hist mes-renda-toggle" data-mes="' + mes + '" style="width:100%; text-align:left; display:flex; justify-content:space-between;">'
+      + '<span>' + (aberto ? "▴ " : "▾ ") + label + ' (' + itens.length + ')</span>'
+      + '<span style="color:#1b7a3d;">' + fmt(totalMes) + '</span></button>';
+    if(aberto){
+      html += '<table><thead><tr><th>Data</th><th>Categoria</th><th class="right">Valor</th><th></th></tr></thead><tbody>';
+      itens.forEach(r => {
+        html += '<tr><td>' + fmtDataBR(r.data) + '</td><td>' + r.categoria + '</td><td class="right">' + fmt(r.valor) +
+          '</td><td class="right"><button class="edit" data-id="' + r.id + '">✏️</button><button class="del" data-id="' + r.id + '">✕</button></td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+  });
   wrap.innerHTML = html;
+
+  wrap.querySelectorAll(".mes-renda-toggle").forEach(b => b.addEventListener("click", () => {
+    const mes = b.dataset.mes;
+    mesesRendaAbertos[mes] = !mesesRendaAbertos[mes];
+    render();
+  }));
   wrap.querySelectorAll(".del").forEach(b => b.addEventListener("click", async () => {
     renda = renda.filter(r => r.id !== b.dataset.id);
     render(); await saveToSheet();
