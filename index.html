@@ -581,9 +581,9 @@ function renderFaturaResumoGastos(){
     return `
     <div class="card" style="border:1px solid #185FA5; flex:1; min-width:220px;">
       <div class="label">${titulo}</div>
-      <div class="value" style="color:#185FA5;">R$ ${bloco.total.toFixed(2).replace(".",",")}</div>
+      <div class="value" style="color:#185FA5;">${fmt(bloco.total)}</div>
       <div style="display:flex; gap:16px; font-size:12px; color:#777; margin-top:6px; flex-wrap:wrap;">
-        ${bloco.porCartao.map(c => `<span>${c.cartao} <b style="color:#1f1f1f;">R$ ${c.valor.toFixed(2).replace(".",",")}</b></span>`).join("")}
+        ${bloco.porCartao.map(c => `<span>${c.cartao} <b style="color:#1f1f1f;">${fmt(c.valor)}</b></span>`).join("")}
       </div>
     </div>`;
   }
