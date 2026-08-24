@@ -151,7 +151,7 @@
 <div id="graficosSection" style="display:none;">
   <div class="subsection">
     <h3>Distribuição do mês atual</h3>
-    <div class="card chart-box" id="graf2PizzaMesWrap" style="margin-bottom:12px;"></div>
+    <div class="card" id="graf2PizzaMesWrap" style="margin-bottom:12px;"></div>
   </div>
 
   <div class="subsection">
@@ -388,13 +388,30 @@ function renderGraficosComparativos(){
   const nomesMes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
   function labelMes(m){ const [a,mm] = m.split("-"); return nomesMes[parseInt(mm,10)-1] + "/" + a.slice(2); }
 
-  // ---- 1) Pizza do mês atual (reaproveita a função que já existe) ----
+  // ---- 1) Barras horizontais do mês atual (ranqueado, maior pro menor) ----
   const gastosMesAtual = gastos.filter(g => mesDe(g.data) === mesAtual);
   const porCategoriaAtual = {};
   gastosMesAtual.forEach(g => { porCategoriaAtual[g.categoria] = (porCategoriaAtual[g.categoria]||0) + g.valor; });
-  const listaPizza = Object.entries(porCategoriaAtual).sort((a,b) => b[1]-a[1])
-    .map(([cat,val],i) => ({ nome: cat, valor: val, cor: corParaCategoria(cat,i) }));
-  desenharGraficoPizza("graf2PizzaMesWrap", listaPizza);
+  const totalMesAtual = Object.values(porCategoriaAtual).reduce((a,b)=>a+b, 0);
+  const listaBarras = Object.entries(porCategoriaAtual).sort((a,b) => b[1]-a[1]);
+  const maxBarra = Math.max(...listaBarras.map(([,v]) => v), 1);
+  let htmlBarras = '';
+  if(listaBarras.length === 0){
+    htmlBarras = '<div class="empty">Sem dados ainda.</div>';
+  } else {
+    listaBarras.forEach(([cat, valor], i) => {
+      const pct = totalMesAtual > 0 ? Math.round(valor/totalMesAtual*100) : 0;
+      const largura = Math.round(valor/maxBarra*100);
+      const cor = corParaCategoria(cat, i);
+      htmlBarras += `<div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+          <span>${cat}</span><span style="color:#777;">${fmt(valor)} · ${pct}%</span>
+        </div>
+        <div style="background:#f0f0ee; border-radius:4px; height:10px;"><div style="width:${largura}%; background:${cor}; height:100%; border-radius:4px;"></div></div>
+      </div>`;
+    });
+  }
+  document.getElementById("graf2PizzaMesWrap").innerHTML = htmlBarras;
 
   // ---- 2) Evolução total por mês (últimos 6 meses com dado) ----
   const totalPorMes = {};
