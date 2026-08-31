@@ -79,6 +79,9 @@
 <div id="gastosSection">
   <div id="faturaResumoWrap" style="margin-bottom:16px;"></div>
 
+  <button class="toggle-hist" id="btnConfigCartoes" style="margin-bottom:12px;">⚙ Configurar fechamento dos cartões</button>
+  <div id="configCartoesWrap" style="display:none; margin-bottom:16px;"></div>
+
   <form id="formGasto">
     <input type="hidden" id="g_id">
     <div><label>Categoria</label>
@@ -250,6 +253,30 @@ function atualizarVisibilidadeSubOutra(){
 
 let gastos = [];
 let renda = [];
+
+// Dia de fechamento de cada cartão. Se a compra cai antes/no dia de fechamento,
+// a 1ª parcela entra no mês seguinte (+1). Se cai depois do fechamento, entra
+// só 2 meses depois (+2), porque já perdeu o ciclo daquele mês.
+// Estrutura: { "Cartão Nubank": { padrao: 25, excecoes: { "2026-09": 24 } }, ... }
+const CARTOES_DIA_FECHAMENTO_PADRAO = {
+  "Cartão Nubank": { padrao: 25, excecoes: {} },
+  "Cartão Amex": { padrao: 25, excecoes: {} },
+  "Cartão Sicredi": { padrao: 25, excecoes: {} }
+};
+let cartoesFechamento = JSON.parse(localStorage.getItem("cartoesFechamento") || "null") || JSON.parse(JSON.stringify(CARTOES_DIA_FECHAMENTO_PADRAO));
+// migra formato antigo (número solto por cartão) pro novo formato, se existir
+Object.keys(cartoesFechamento).forEach(c => {
+  if(typeof cartoesFechamento[c] === "number"){
+    cartoesFechamento[c] = { padrao: cartoesFechamento[c], excecoes: {} };
+  }
+  if(!cartoesFechamento[c].excecoes) cartoesFechamento[c].excecoes = {};
+});
+function salvarCartoesFechamento(){ localStorage.setItem("cartoesFechamento", JSON.stringify(cartoesFechamento)); }
+function diaFechamentoDe(cartao, mesRef){
+  const cfg = cartoesFechamento[cartao];
+  if(!cfg) return 25;
+  return cfg.excecoes && cfg.excecoes[mesRef] != null ? cfg.excecoes[mesRef] : cfg.padrao;
+}
 let tab = "GASTOS";
 let histGastosAberto = false;
 let histPage = 0;
@@ -363,11 +390,14 @@ function parcelasDoGasto(g){
   if(!ehCartao(g.formaPagamento)){
     return [{ mes: mesCompra, valor: g.valor }];
   }
+  const diaCompra = parseInt(String(g.data).slice(8,10), 10) || 1;
+  const diaFechamento = diaFechamentoDe(g.formaPagamento, mesCompra);
+  const offsetInicial = diaCompra <= diaFechamento ? 1 : 2;
   const n = g.parcelas || 1;
   const valorParcela = g.valor / n;
   const lista = [];
-  for(let i=1; i<=n; i++){
-    lista.push({ mes: somaMeses(mesCompra, i), valor: valorParcela });
+  for(let i=0; i<n; i++){
+    lista.push({ mes: somaMeses(mesCompra, offsetInicial + i), valor: valorParcela });
   }
   return lista;
 }
@@ -1077,6 +1107,69 @@ async function removerDuplicados(){
 document.getElementById("btnLimparDuplicados").addEventListener("click", removerDuplicados);
 
 document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
+function montarPainelConfigCartoes(){
+  const wrap = document.getElementById("configCartoesWrap");
+  const cartoesLista = ["Cartão Nubank", "Cartão Amex", "Cartão Sicredi"];
+  wrap.innerHTML = `<div class="card">
+    <p style="font-size:12px; color:#777; margin:0 0 12px;">Dia padrão em que a fatura de cada cartão fecha, com opção de exceção pra meses específicos (ex: fechou 1-2 dias antes/depois por causa de fim de semana/feriado).</p>
+    ${cartoesLista.map(c => {
+      const cfg = cartoesFechamento[c] || { padrao: 25, excecoes: {} };
+      const excecoesHtml = Object.entries(cfg.excecoes || {}).sort().map(([mes,dia]) => `
+        <div style="display:flex; align-items:center; gap:8px; font-size:12px; margin-top:4px;">
+          <span style="flex:1;">${mes}: fechou dia ${dia}</span>
+          <button type="button" class="del-excecao" data-cartao="${c}" data-mes="${mes}" style="border:none; background:none; color:#c0392b; cursor:pointer;">✕</button>
+        </div>`).join("");
+      return `
+      <div style="border-bottom:1px solid #f0f0ee; padding-bottom:12px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="flex:1; font-size:13px; font-weight:500;">${c}</span>
+          <label style="font-size:11px; color:#777;">Padrão:</label>
+          <input type="number" min="1" max="31" style="width:55px;" class="cartao-fechamento-input" data-cartao="${c}" value="${cfg.padrao}">
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input type="month" class="excecao-mes-input" data-cartao="${c}" style="font-size:12px;">
+          <input type="number" min="1" max="31" placeholder="dia" class="excecao-dia-input" data-cartao="${c}" style="width:50px; font-size:12px;">
+          <button type="button" class="add-excecao" data-cartao="${c}" style="font-size:12px;">+ Exceção</button>
+        </div>
+        <div class="excecoes-lista" data-cartao="${c}">${excecoesHtml}</div>
+      </div>`;
+    }).join("")}
+    <button type="button" class="add" id="btnSalvarFechamento" style="margin-top:4px;">Salvar</button>
+  </div>`;
+
+  wrap.querySelectorAll(".add-excecao").forEach(btn => btn.addEventListener("click", () => {
+    const cartao = btn.dataset.cartao;
+    const mesInput = wrap.querySelector(`.excecao-mes-input[data-cartao="${cartao}"]`);
+    const diaInput = wrap.querySelector(`.excecao-dia-input[data-cartao="${cartao}"]`);
+    const mes = mesInput.value;
+    const dia = parseInt(diaInput.value, 10);
+    if(!mes || !(dia >= 1 && dia <= 31)){ alert("Preencha o mês e um dia válido (1-31)."); return; }
+    if(!cartoesFechamento[cartao]) cartoesFechamento[cartao] = { padrao: 25, excecoes: {} };
+    cartoesFechamento[cartao].excecoes[mes] = dia;
+    montarPainelConfigCartoes();
+  }));
+  wrap.querySelectorAll(".del-excecao").forEach(btn => btn.addEventListener("click", () => {
+    delete cartoesFechamento[btn.dataset.cartao].excecoes[btn.dataset.mes];
+    montarPainelConfigCartoes();
+  }));
+  document.getElementById("btnSalvarFechamento").addEventListener("click", () => {
+    wrap.querySelectorAll(".cartao-fechamento-input").forEach(inp => {
+      const dia = parseInt(inp.value, 10);
+      if(dia >= 1 && dia <= 31) cartoesFechamento[inp.dataset.cartao].padrao = dia;
+    });
+    salvarCartoesFechamento();
+    render();
+    alert("Configuração salva. Os fluxos de caixa e faturas futuras já foram recalculados.");
+  });
+}
+
+document.getElementById("btnConfigCartoes").addEventListener("click", () => {
+  const wrap = document.getElementById("configCartoesWrap");
+  const abrindo = wrap.style.display === "none";
+  wrap.style.display = abrindo ? "block" : "none";
+  if(abrindo) montarPainelConfigCartoes();
+});
+
 document.getElementById("toggleHistGastos").addEventListener("click", () => { histGastosAberto = !histGastosAberto; render(); });
 document.getElementById("g_forma").addEventListener("change", atualizarVisibilidadeParcelas);
 
