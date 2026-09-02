@@ -100,6 +100,7 @@
       </select>
     </div>
     <div id="g_parcelasWrap" style="display:none;"><label>Parcelas</label><input type="number" id="g_parcelas" value="1" min="1"></div>
+    <div><label>Mês de destino <span style="font-weight:400; color:#aaa;">(só p/ estornos)</span></label><input type="month" id="g_mesDestino"></div>
     <div style="display:flex; gap:6px;">
       <button type="submit" class="add" id="g_submitBtn">+ Add</button>
       <button type="button" class="cancel-edit" id="g_cancelBtn" style="display:none;">Cancelar</button>
@@ -383,6 +384,21 @@ function ehCartao(formaPagamento){ return String(formaPagamento || "").startsWit
 
 function parcelasDoGasto(g){
   const mesCompra = mesDe(g.data);
+
+  // Estorno / correção manual: ignora a data e o fechamento, usa o mês escolhido direto
+  if(g.mesDestino){
+    if(!ehCartao(g.formaPagamento)){
+      return [{ mes: g.mesDestino, valor: g.valor }];
+    }
+    const n = g.parcelas || 1;
+    const valorParcela = g.valor / n;
+    const lista = [];
+    for(let i=0; i<n; i++){
+      lista.push({ mes: somaMeses(g.mesDestino, i), valor: valorParcela });
+    }
+    return lista;
+  }
+
   if(!ehCartao(g.formaPagamento)){
     return [{ mes: mesCompra, valor: g.valor }];
   }
@@ -1020,6 +1036,7 @@ function iniciarEdicaoGasto(id){
   document.getElementById("g_valor").value = g.valor;
   document.getElementById("g_forma").value = g.formaPagamento;
   document.getElementById("g_parcelas").value = g.parcelas || 1;
+  document.getElementById("g_mesDestino").value = g.mesDestino || "";
   atualizarVisibilidadeParcelas();
   const btn = document.getElementById("g_submitBtn");
   btn.textContent = "Salvar edição"; btn.classList.add("editing");
@@ -1188,13 +1205,14 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
   const data = document.getElementById("g_data").value;
   const formaPagamento = document.getElementById("g_forma").value;
   const parcelas = ehCartao(formaPagamento) ? (parseInt(document.getElementById("g_parcelas").value) || 1) : 1;
+  const mesDestino = document.getElementById("g_mesDestino").value || "";
 
   submitBtn.disabled = true;
   if(editando.tipo === "gasto" && editando.id){
     const idx = gastos.findIndex(g => g.id === editando.id);
-    if(idx > -1) gastos[idx] = { id: editando.id, categoria, subcategoria, data, valor, formaPagamento, parcelas };
+    if(idx > -1) gastos[idx] = { id: editando.id, categoria, subcategoria, data, valor, formaPagamento, parcelas, mesDestino };
   } else {
-    gastos.push({ id: Date.now().toString(), categoria, subcategoria, data, valor, formaPagamento, parcelas });
+    gastos.push({ id: Date.now().toString(), categoria, subcategoria, data, valor, formaPagamento, parcelas, mesDestino });
   }
   cancelarEdicaoGasto();
   render();
