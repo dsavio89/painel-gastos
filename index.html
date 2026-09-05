@@ -310,7 +310,23 @@ function desenharGraficoPizza(elId, dados){
       plugins: {
         legend: {
           position: "right",
-          labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
+          labels: {
+            boxWidth: 12, font: { size: 11 }, padding: 10,
+            generateLabels: (chart) => {
+              const ds = chart.data.datasets[0];
+              const totalLeg = ds.data.reduce((a,b) => a+b, 0);
+              return chart.data.labels.map((label, i) => {
+                const valor = ds.data[i];
+                const pct = totalLeg > 0 ? ((valor/totalLeg)*100).toFixed(0) : 0;
+                return {
+                  text: label + " (" + pct + "%)",
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  index: i
+                };
+              });
+            }
+          }
         },
         tooltip: {
           callbacks: {
