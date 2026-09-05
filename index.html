@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel de Gastos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:#1f1f1f; max-width:1200px; margin:0 auto; padding:24px 12px; }
@@ -280,38 +281,48 @@ let editando = { tipo: null, id: null }; // 'gasto' | 'renda'
 const PALETA = ["#185FA5","#0F6E56","#c98a2c","#e07a5f","#7F77DD","#639922","#a13d63","#3a6ea5","#88a65e","#c85c5c","#8a6d00","#555"];
 function corParaCategoria(nome, indice){ return PALETA[indice % PALETA.length]; }
 
+const chartInstances = {};
 function desenharGraficoPizza(elId, dados){
   const wrap = document.getElementById(elId);
   if(dados.length === 0){
     wrap.innerHTML = '<div class="empty" style="padding:0;">Sem dados ainda</div>';
     return;
   }
+  wrap.innerHTML = '<div style="position:relative; height:220px;"><canvas id="' + elId + '_canvas"></canvas></div>';
+  const ctx = document.getElementById(elId + "_canvas");
+  if(chartInstances[elId]) chartInstances[elId].destroy();
   const total = dados.reduce((a,d) => a + d.valor, 0);
-  const raio = 45, raioInterno = 26, cx = 55, cy = 55;
-  let anguloAtual = -90;
-  let fatias = "";
-  dados.forEach(d => {
-    const fracao = d.valor / total;
-    const anguloFatia = fracao * 360;
-    const x1 = cx + raio * Math.cos(anguloAtual * Math.PI/180);
-    const y1 = cy + raio * Math.sin(anguloAtual * Math.PI/180);
-    const anguloFim = anguloAtual + anguloFatia;
-    const x2 = cx + raio * Math.cos(anguloFim * Math.PI/180);
-    const y2 = cy + raio * Math.sin(anguloFim * Math.PI/180);
-    const grandeArco = anguloFatia > 180 ? 1 : 0;
-    const xi1 = cx + raioInterno * Math.cos(anguloAtual * Math.PI/180);
-    const yi1 = cy + raioInterno * Math.sin(anguloAtual * Math.PI/180);
-    const xi2 = cx + raioInterno * Math.cos(anguloFim * Math.PI/180);
-    const yi2 = cy + raioInterno * Math.sin(anguloFim * Math.PI/180);
-    const pct = (fracao * 100).toFixed(0);
-    fatias += `<path d="M ${x1} ${y1} A ${raio} ${raio} 0 ${grandeArco} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${raioInterno} ${raioInterno} 0 ${grandeArco} 0 ${xi1} ${yi1} Z" fill="${d.cor}"><title>${d.nome}: ${fmt(d.valor)} (${pct}%)</title></path>`;
-    anguloAtual = anguloFim;
+  chartInstances[elId] = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: dados.map(d => d.nome),
+      datasets: [{
+        data: dados.map(d => d.valor),
+        backgroundColor: dados.map(d => d.cor),
+        borderWidth: 2,
+        borderColor: "#fff"
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "55%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const pct = ((ctx.raw/total)*100).toFixed(0);
+              return ctx.label + ": " + fmt(ctx.raw) + " (" + pct + "%)";
+            }
+          }
+        }
+      }
+    }
   });
-  const legenda = dados.map(d => {
-    const pct = ((d.valor/total)*100).toFixed(0);
-    return `<div class="item"><span class="dot" style="background:${d.cor}"></span>${d.nome} (${pct}%)</div>`;
-  }).join("");
-  wrap.innerHTML = `<svg viewBox="0 0 110 110" width="110" height="110">${fatias}</svg><div class="chart-legend">${legenda}</div>`;
 }
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
