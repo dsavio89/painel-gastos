@@ -73,6 +73,7 @@
   <button class="tab" data-tab="FLUXO">Fluxo de caixa</button>
   <button class="tab" data-tab="RENDA">Renda</button>
   <button class="tab" data-tab="GRAFICOS">Gráficos</button>
+  <button class="tab" data-tab="APRESENTACAO">Apresentação</button>
 </div>
 
 <div id="summaryWrap"></div>
@@ -151,6 +152,35 @@
     </div>
   </form>
   <div id="rendaWrap"></div>
+</div>
+
+<div id="apresentacaoSection" style="display:none;">
+  <div style="background:linear-gradient(135deg,#1B3A5C,#2C5F8D); border-radius:12px; padding:24px; margin-bottom:20px; color:#fff;">
+    <div style="font-size:12px; letter-spacing:.08em; text-transform:uppercase; opacity:.75;">Painel de acompanhamento financeiro</div>
+    <div style="font-size:24px; font-weight:600; margin-top:4px;" id="apr_titulo">Resumo do ano</div>
+    <div style="font-size:12px; opacity:.7; margin-top:2px;">Comparativo mensal de renda e gastos</div>
+  </div>
+
+  <div id="apr_cards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:24px;"></div>
+
+  <div class="subsection">
+    <h3>Comparativo mensal: renda x gastos</h3>
+    <div style="position:relative; height:300px; background:#fff; border:1px solid #eee; border-radius:10px; padding:14px;">
+      <canvas id="apr_chartMensal"></canvas>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Distribuição de gastos no ano</h3>
+    <div style="position:relative; height:280px; background:#fff; border:1px solid #eee; border-radius:10px; padding:14px;">
+      <canvas id="apr_chartCategorias"></canvas>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>Base de dados — resumo por mês</h3>
+    <div id="apr_tabela" style="overflow-x:auto;"></div>
+  </div>
 </div>
 
 <div id="graficosSection" style="display:none;">
@@ -472,12 +502,14 @@ function render(){
   document.getElementById("fluxoSection").style.display = tab === "FLUXO" ? "block" : "none";
   document.getElementById("rendaSection").style.display = tab === "RENDA" ? "block" : "none";
   document.getElementById("graficosSection").style.display = tab === "GRAFICOS" ? "block" : "none";
+  document.getElementById("apresentacaoSection").style.display = tab === "APRESENTACAO" ? "block" : "none";
 
   const subtitles = {
     GASTOS: "Lance cada gasto do dia. Categoria já vem pré-cadastrada.",
     FLUXO: "O que realmente entra e sai da sua conta, mês a mês.",
     RENDA: "Salário e outras entradas de dinheiro.",
-    GRAFICOS: "Compare meses e veja onde seu gasto mais mudou."
+    GRAFICOS: "Compare meses e veja onde seu gasto mais mudou.",
+    APRESENTACAO: "Visão geral do ano, pronta pra apresentar."
   };
   document.getElementById("subtitle").textContent = subtitles[tab];
 
@@ -489,6 +521,7 @@ function render(){
   else if(tab === "FLUXO"){ renderFluxo(); renderFatura(); }
   else if(tab === "RENDA"){ renderRenda(); }
   else if(tab === "GRAFICOS"){ renderGraficosComparativos(); }
+  else if(tab === "APRESENTACAO"){ renderApresentacao(); }
 }
 
 function popularFiltrosGraficos(){
@@ -705,6 +738,125 @@ function renderGraficosComparativos(){
     });
   }
   document.getElementById("graf2FormaPagamentoWrap").innerHTML = htmlForma;
+}
+
+function renderApresentacao(){
+  const anoAtual = hoje().slice(0,4);
+  const nomesMes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  document.getElementById("apr_titulo").textContent = "Resumo do ano " + anoAtual;
+
+  const gastosAno = gastos.filter(g => String(g.data).slice(0,4) === anoAtual);
+  const rendaAno = renda.filter(r => String(r.data).slice(0,4) === anoAtual);
+  const totalGasto = gastosAno.reduce((s,g) => s + Number(g.valor), 0);
+  const totalRenda = rendaAno.reduce((s,r) => s + Number(r.valor), 0);
+  const saldo = totalRenda - totalGasto;
+  const pctGasto = totalRenda > 0 ? Math.round(totalGasto/totalRenda*100) : 0;
+
+  // ---- Cards de destaque ----
+  const cards = [
+    { label: "Total de renda no ano", valor: fmt(totalRenda), cor: "#1B5E43" },
+    { label: "Total gasto no ano", valor: fmt(totalGasto), cor: "#8C5A16" },
+    { label: "Saldo do ano", valor: fmt(saldo), cor: saldo >= 0 ? "#1B3A5C" : "#9B2C2C" },
+    { label: "% da renda comprometida", valor: pctGasto + "%", cor: "#4A4A52" }
+  ];
+  document.getElementById("apr_cards").innerHTML = cards.map(c => `
+    <div style="background:${c.cor}; color:#fff; border-radius:10px; padding:18px;">
+      <div style="font-size:12px; opacity:.8;">${c.label}</div>
+      <div style="font-size:22px; font-weight:600; margin-top:6px;">${c.valor}</div>
+    </div>`).join("");
+
+  // ---- Dados por mês ----
+  const mesesDoAno = [];
+  for(let i=1; i<=12; i++){ mesesDoAno.push(anoAtual + "-" + String(i).padStart(2,"0")); }
+  const gastoPorMes = {}, rendaPorMes = {};
+  gastosAno.forEach(g => { const m = mesDe(g.data); gastoPorMes[m] = (gastoPorMes[m]||0) + Number(g.valor); });
+  rendaAno.forEach(r => { const m = mesDe(r.data); rendaPorMes[m] = (rendaPorMes[m]||0) + Number(r.valor); });
+  const ultimoMesComDado = Math.max(
+    ...Object.keys(gastoPorMes).concat(Object.keys(rendaPorMes)).map(m => parseInt(m.slice(5,7),10)),
+    1
+  );
+  const mesesVisiveis = mesesDoAno.slice(0, Math.min(ultimoMesComDado + 2, 12));
+
+  // ---- Gráfico comparativo mensal ----
+  const ctxM = document.getElementById("apr_chartMensal");
+  if(chartInstances["apr_mensal"]) chartInstances["apr_mensal"].destroy();
+  chartInstances["apr_mensal"] = new Chart(ctxM, {
+    type: "bar",
+    data: {
+      labels: mesesVisiveis.map(m => nomesMes[parseInt(m.slice(5,7),10)-1].slice(0,3) + "/" + anoAtual.slice(2)),
+      datasets: [
+        { label: "Renda", data: mesesVisiveis.map(m => rendaPorMes[m] || 0), backgroundColor: "#1B5E43", borderRadius: 4 },
+        { label: "Gastos", data: mesesVisiveis.map(m => gastoPorMes[m] || 0), backgroundColor: "#8C5A16", borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + fmt(c.raw) } }
+      },
+      scales: { y: { ticks: { callback: v => "R$ " + (v/1000).toFixed(0) + "k" } } }
+    }
+  });
+
+  // ---- Gráfico de categorias do ano ----
+  const porCategoriaAno = {};
+  gastosAno.forEach(g => { porCategoriaAno[g.categoria] = (porCategoriaAno[g.categoria]||0) + Number(g.valor); });
+  const catsOrdenadas = Object.entries(porCategoriaAno).sort((a,b) => b[1]-a[1]);
+  const ctxC = document.getElementById("apr_chartCategorias");
+  if(chartInstances["apr_categorias"]) chartInstances["apr_categorias"].destroy();
+  if(catsOrdenadas.length > 0){
+    chartInstances["apr_categorias"] = new Chart(ctxC, {
+      type: "bar",
+      data: {
+        labels: catsOrdenadas.map(([c]) => c),
+        datasets: [{ label: "Gasto no ano", data: catsOrdenadas.map(([,v]) => v), backgroundColor: catsOrdenadas.map(([c],i) => corParaCategoria(c,i)), borderRadius: 4 }]
+      },
+      options: {
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (c) => {
+            const pct = totalGasto > 0 ? ((c.raw/totalGasto)*100).toFixed(0) : 0;
+            return fmt(c.raw) + " (" + pct + "%)";
+          } } }
+        },
+        scales: { x: { ticks: { callback: v => "R$ " + (v/1000).toFixed(0) + "k" } } }
+      }
+    });
+  }
+
+  // ---- Tabela resumo ----
+  let acumulado = 0;
+  let htmlTabela = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead><tr style="background:#1B3A5C; color:#fff;">
+      <th style="text-align:left; padding:8px;">Mês</th>
+      <th style="text-align:right; padding:8px;">Renda</th>
+      <th style="text-align:right; padding:8px;">Gastos</th>
+      <th style="text-align:right; padding:8px;">Saldo</th>
+      <th style="text-align:right; padding:8px;">Acumulado</th>
+    </tr></thead><tbody>`;
+  mesesVisiveis.forEach(m => {
+    const vR = rendaPorMes[m] || 0;
+    const vG = gastoPorMes[m] || 0;
+    const s = vR - vG;
+    acumulado += s;
+    htmlTabela += `<tr style="border-bottom:1px solid #f0f0ee;">
+      <td style="padding:8px;">${nomesMes[parseInt(m.slice(5,7),10)-1]}/${anoAtual.slice(2)}</td>
+      <td style="padding:8px; text-align:right; color:#1B5E43;">${fmt(vR)}</td>
+      <td style="padding:8px; text-align:right; color:#8C5A16;">${fmt(vG)}</td>
+      <td style="padding:8px; text-align:right; color:${s>=0?'#1B5E43':'#9B2C2C'}; font-weight:600;">${fmt(s)}</td>
+      <td style="padding:8px; text-align:right; color:#777;">${fmt(acumulado)}</td>
+    </tr>`;
+  });
+  htmlTabela += `<tr style="background:#f7f7f5; font-weight:600;">
+      <td style="padding:8px;">TOTAL</td>
+      <td style="padding:8px; text-align:right;">${fmt(totalRenda)}</td>
+      <td style="padding:8px; text-align:right;">${fmt(totalGasto)}</td>
+      <td style="padding:8px; text-align:right;">${fmt(saldo)}</td>
+      <td style="padding:8px; text-align:right;">${fmt(acumulado)}</td>
+    </tr></tbody></table>`;
+  document.getElementById("apr_tabela").innerHTML = htmlTabela;
 }
 
 function renderResumoGastos(){
