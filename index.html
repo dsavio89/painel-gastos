@@ -745,17 +745,29 @@ function renderApresentacao(){
   const nomesMes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   document.getElementById("apr_titulo").textContent = "Resumo do ano " + anoAtual;
 
-  const gastosAno = gastos.filter(g => String(g.data).slice(0,4) === anoAtual);
   const rendaAno = renda.filter(r => String(r.data).slice(0,4) === anoAtual);
-  const totalGasto = gastosAno.reduce((s,g) => s + Number(g.valor), 0);
   const totalRenda = rendaAno.reduce((s,r) => s + Number(r.valor), 0);
+
+  // ---- Gastos: usa a parcela real de cada mês (mesma lógica do Fluxo de caixa), ----
+  // não o valor cheio da compra — assim bate com o que realmente sai da conta.
+  const gastoPorMes = {};
+  const categoriaPorMes = {}; // mes -> { categoria -> valor }
+  gastos.forEach(g => {
+    parcelasDoGasto(g).forEach(p => {
+      if(String(p.mes).slice(0,4) !== anoAtual) return;
+      gastoPorMes[p.mes] = (gastoPorMes[p.mes] || 0) + p.valor;
+      if(!categoriaPorMes[p.mes]) categoriaPorMes[p.mes] = {};
+      categoriaPorMes[p.mes][g.categoria] = (categoriaPorMes[p.mes][g.categoria] || 0) + p.valor;
+    });
+  });
+  const totalGasto = Object.values(gastoPorMes).reduce((a,b) => a+b, 0);
   const saldo = totalRenda - totalGasto;
   const pctGasto = totalRenda > 0 ? Math.round(totalGasto/totalRenda*100) : 0;
 
   // ---- Cards de destaque ----
   const cards = [
     { label: "Total de renda no ano", valor: fmt(totalRenda), cor: "#1B5E43" },
-    { label: "Total gasto no ano", valor: fmt(totalGasto), cor: "#8C5A16" },
+    { label: "Total gasto no ano (real, parcelado)", valor: fmt(totalGasto), cor: "#8C5A16" },
     { label: "Saldo do ano", valor: fmt(saldo), cor: saldo >= 0 ? "#1B3A5C" : "#9B2C2C" },
     { label: "% da renda comprometida", valor: pctGasto + "%", cor: "#4A4A52" }
   ];
@@ -768,8 +780,7 @@ function renderApresentacao(){
   // ---- Dados por mês ----
   const mesesDoAno = [];
   for(let i=1; i<=12; i++){ mesesDoAno.push(anoAtual + "-" + String(i).padStart(2,"0")); }
-  const gastoPorMes = {}, rendaPorMes = {};
-  gastosAno.forEach(g => { const m = mesDe(g.data); gastoPorMes[m] = (gastoPorMes[m]||0) + Number(g.valor); });
+  const rendaPorMes = {};
   rendaAno.forEach(r => { const m = mesDe(r.data); rendaPorMes[m] = (rendaPorMes[m]||0) + Number(r.valor); });
   const ultimoMesComDado = Math.max(
     ...Object.keys(gastoPorMes).concat(Object.keys(rendaPorMes)).map(m => parseInt(m.slice(5,7),10)),
@@ -799,9 +810,13 @@ function renderApresentacao(){
     }
   });
 
-  // ---- Gráfico de categorias do ano ----
+  // ---- Gráfico de categorias do ano (também com base na parcela real) ----
   const porCategoriaAno = {};
-  gastosAno.forEach(g => { porCategoriaAno[g.categoria] = (porCategoriaAno[g.categoria]||0) + Number(g.valor); });
+  Object.values(categoriaPorMes).forEach(porCat => {
+    Object.entries(porCat).forEach(([cat, valor]) => {
+      porCategoriaAno[cat] = (porCategoriaAno[cat] || 0) + valor;
+    });
+  });
   const catsOrdenadas = Object.entries(porCategoriaAno).sort((a,b) => b[1]-a[1]);
   const ctxC = document.getElementById("apr_chartCategorias");
   if(chartInstances["apr_categorias"]) chartInstances["apr_categorias"].destroy();
