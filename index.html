@@ -60,6 +60,11 @@
   tr.obs-row td { font-size:12px; color:#666; background:#fafaf8; padding:6px 10px; border-bottom:1px solid #f0f0f0; }
   .btn-olho { margin-left:auto; background:none; border:1px solid #ddd; border-radius:8px; padding:4px 8px; cursor:pointer; color:#666; display:inline-flex; align-items:center; }
   .btn-olho:hover { color:#185FA5; border-color:#185FA5; }
+  .ano-nav { display:flex; align-items:center; gap:10px; margin:0 0 10px; font-size:14px; font-weight:600; }
+  .ano-nav button { background:none; border:1px solid #ccc; border-radius:6px; padding:3px 9px; cursor:pointer; color:#555; font-size:13px; }
+  .ano-nav button:disabled { opacity:.35; cursor:default; }
+  .ano-nav.on-dark { color:#fff; }
+  .ano-nav.on-dark button { color:#fff; border-color:rgba(255,255,255,.55); }
 </style>
 </head>
 <body>
@@ -122,6 +127,7 @@
 
   <div class="subsection">
     <h3>Orçamento do Ano - Categoria x Mês (Competência)</h3>
+    <div id="matrizAnoNav" class="ano-nav"></div>
     <div id="matrizWrap" style="overflow-x:auto;"></div>
   </div>
 
@@ -168,6 +174,7 @@
     <div style="font-size:12px; letter-spacing:.08em; text-transform:uppercase; opacity:.75;">Painel de acompanhamento financeiro</div>
     <div style="font-size:24px; font-weight:600; margin-top:4px;" id="apr_titulo">Resumo do ano</div>
     <div style="font-size:12px; opacity:.7; margin-top:2px;">Comparativo mensal de renda e gastos</div>
+    <div id="apr_anoNav" class="ano-nav on-dark" style="margin:12px 0 0;"></div>
   </div>
 
   <div id="apr_cards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:24px;"></div>
@@ -296,6 +303,7 @@ let gastos = [];
 let renda = [];
 
 // Olho de "ocultar valores" (preferência só deste navegador; não mexe em nenhum dado)
+let anoVisao = new Date().getFullYear(); // ano exibido na tabela por categoria e na Apresentação
 let ocultarValores = false;
 try { ocultarValores = localStorage.getItem("ocultarValores") === "1"; } catch(e){}
 
@@ -401,6 +409,36 @@ function esc(s){
 }
 function norm(s){
   return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
+function anosDisponiveis(){
+  const anoReal = new Date().getFullYear();
+  const anos = new Set([anoReal]);
+  gastos.forEach(g => {
+    const a = parseInt(String(g.data).slice(0,4), 10);
+    if(a) anos.add(a);
+    parcelasDoGasto(g).forEach(pc => { const b = parseInt(String(pc.mes).slice(0,4), 10); if(b) anos.add(b); });
+  });
+  renda.forEach(r => { const a = parseInt(String(r.data).slice(0,4), 10); if(a) anos.add(a); });
+  const lista = [...anos];
+  return { min: Math.min(...lista), max: Math.max(...lista) };
+}
+function mudarAno(delta){
+  const { min, max } = anosDisponiveis();
+  const novo = anoVisao + delta;
+  if(novo < min || novo > max) return;
+  anoVisao = novo;
+  render();
+}
+function renderAnoNav(containerId){
+  const el = document.getElementById(containerId);
+  const { min, max } = anosDisponiveis();
+  if(anoVisao < min) anoVisao = min;
+  if(anoVisao > max) anoVisao = max;
+  el.innerHTML = '<button type="button" class="ano-prev" ' + (anoVisao <= min ? 'disabled' : '') + ' aria-label="Ano anterior">◀</button>' +
+    '<span>' + anoVisao + '</span>' +
+    '<button type="button" class="ano-next" ' + (anoVisao >= max ? 'disabled' : '') + ' aria-label="Próximo ano">▶</button>';
+  el.querySelector(".ano-prev").addEventListener("click", () => mudarAno(-1));
+  el.querySelector(".ano-next").addEventListener("click", () => mudarAno(1));
 }
 function numBR(v){ return new Intl.NumberFormat("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(Number(v) || 0); }
 function fmtDataBR(dataStr){
@@ -765,13 +803,19 @@ function renderGraficosComparativos(){
 }
 
 function renderApresentacao(){
-  const anoAtual = hoje().slice(0,4);
+  renderAnoNav("apr_anoNav");
+  const anoAtual = String(anoVisao); // ano exibido (nome mantido por compatibilidade com o resto da função)
+  const anoReal = new Date().getFullYear();
+  const ehFuturo = anoVisao > anoReal;
+  const ehAtual = anoVisao === anoReal;
   const nomesMes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   document.getElementById("apr_titulo").textContent = "Resumo do ano " + anoAtual;
 
   const rendaAno = renda.filter(r => String(r.data).slice(0,4) === anoAtual);
   const totalRenda = rendaAno.reduce((s,r) => s + Number(r.valor), 0);
   const mesAtualStr = hoje().slice(0,7);
+  // ano atual: só até o mês atual (realizado); ano passado: tudo; ano futuro: tudo (projetado)
+  const limite = ehFuturo ? "9999-12" : (ehAtual ? mesAtualStr : "9999-12");
 
   // ---- Gastos: usa a parcela real de cada mês (mesma lógica do Fluxo de caixa), ----
   // não o valor cheio da compra — assim bate com o que realmente sai da conta.
@@ -789,7 +833,7 @@ function renderApresentacao(){
   // Totais dos cards: só até o mês atual (realizado), sem contar parcelas futuras
   // que ainda nem venceram — senão compara gasto do ano inteiro com renda parcial.
   const totalGasto = Object.entries(gastoPorMes)
-    .filter(([m]) => m <= mesAtualStr)
+    .filter(([m]) => m <= limite)
     .reduce((s,[,v]) => s+v, 0);
   const saldo = totalRenda - totalGasto;
   const pctGasto = totalRenda > 0 ? Math.round(totalGasto/totalRenda*100) : 0;
@@ -797,8 +841,8 @@ function renderApresentacao(){
   // ---- Cards de destaque ----
   const cards = [
     { label: "Total de renda no ano", valor: fmt(totalRenda), cor: "#1B5E43" },
-    { label: "Total gasto no ano até o mês atual", valor: fmt(totalGasto), cor: "#8C5A16" },
-    { label: "Saldo do ano (realizado)", valor: fmt(saldo), cor: saldo >= 0 ? "#1B3A5C" : "#9B2C2C" },
+    { label: ehFuturo ? "Total gasto no ano (projetado)" : (ehAtual ? "Total gasto no ano até o mês atual" : "Total gasto no ano"), valor: fmt(totalGasto), cor: "#8C5A16" },
+    { label: ehFuturo ? "Saldo do ano (projetado)" : (ehAtual ? "Saldo do ano (realizado)" : "Saldo do ano"), valor: fmt(saldo), cor: saldo >= 0 ? "#1B3A5C" : "#9B2C2C" },
     { label: "% da renda comprometida", valor: pctGasto + "%", cor: "#4A4A52" }
   ];
   document.getElementById("apr_cards").innerHTML = cards.map(c => `
@@ -843,7 +887,7 @@ function renderApresentacao(){
   // ---- Gráfico de categorias do ano (só até o mês atual, mesma base dos cards) ----
   const porCategoriaAno = {};
   Object.entries(categoriaPorMes)
-    .filter(([m]) => m <= mesAtualStr)
+    .filter(([m]) => m <= limite)
     .forEach(([, porCat]) => {
       Object.entries(porCat).forEach(([cat, valor]) => {
         porCategoriaAno[cat] = (porCategoriaAno[cat] || 0) + valor;
@@ -975,7 +1019,8 @@ function renderGraficoCategoriaMes(){
 
 function renderMatrizCategoriaMes(){
   const wrap = document.getElementById("matrizWrap");
-  const ano = String(new Date().getFullYear());
+  renderAnoNav("matrizAnoNav");
+  const ano = String(anoVisao);
 
   // soma[categoria][subcategoria][mesIndex 0-11] = valor
   const soma = {};
